@@ -140,8 +140,8 @@ export async function getWorkbenchData(
     supabase.from("profiles").select("id,name,email,title,status"),
     supabase.from("user_roles").select("user_id,role"),
     supabase.from("user_scopes").select("user_id,scope_type,lab_id,team_id"),
-    supabase.from("labs").select("id,name").order("name"),
-    supabase.from("teams").select("id,name,lab_id").order("name"),
+    supabase.from("labs").select("id,name,status").order("name"),
+    supabase.from("teams").select("id,name,lab_id,status").order("name"),
     supabase
       .from("tasks")
       .select("*, cases(case_type, persons(full_name))")
@@ -225,8 +225,13 @@ export async function getWorkbenchData(
     cases,
     sharedCases,
     users,
-    labs: (labsRes.data ?? []) as any[],
-    teams: ((teamsRes.data ?? []) as any[]).map((t) => ({ id: t.id, name: t.name, labId: t.lab_id })),
+    labs: ((labsRes.data ?? []) as any[]).map((l) => ({ id: l.id, name: l.name, status: l.status ?? "Active" })),
+    teams: ((teamsRes.data ?? []) as any[]).map((t) => ({
+      id: t.id,
+      name: t.name,
+      labId: t.lab_id,
+      status: t.status ?? "Active",
+    })),
     permissions: PERMISSIONS,
   };
 }
