@@ -167,9 +167,9 @@ function OverviewTab({ detail }: { detail: CaseDetailDto }) {
       <div className="detailcard">
         <b>{c.notes !== null ? t("Notes") : t("Notes (restricted)")}</b>
         {c.notes !== null ? (
-          <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--muted)", whiteSpace: "pre-wrap" }}>{c.notes}</p>
+          <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--ink-sub)", whiteSpace: "pre-wrap" }}>{c.notes}</p>
         ) : (
-          <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--muted)" }}>
+          <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--ink-sub)" }}>
             <Icon name="lock" /> {t("Restricted field: visible to case owners and collaborators only.")}
           </p>
         )}
