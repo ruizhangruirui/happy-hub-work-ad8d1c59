@@ -488,6 +488,8 @@ export interface CreateCaseInput {
   endDate?: string | undefined;
   role?: string | undefined;
   location?: string | undefined;
+  supervisorName: string;
+  supervisorEmail?: string | undefined;
   priority: string;
   notes?: string | undefined;
 }
@@ -518,6 +520,8 @@ export async function createCase(supabase: Db, userId: string, input: CreateCase
       end_date: input.endDate || null,
       role: input.role || null,
       location: input.location || null,
+      supervisor_name: input.supervisorName,
+      supervisor_email: input.supervisorEmail || null,
       priority: input.priority,
       status: "Preparing",
       owner_id: userId,
@@ -692,4 +696,98 @@ export async function assignChecklistOwner(
     case_id: item.case_id,
   });
   return { ok: true as const };
+}
+
+/* ------------------------- org management (admin) ------------------------- */
+
+async function requireAdmin(supabase: Db, userId: string) {
+  const { data } = await supabase.rpc("has_role", { _user_id: userId, _role: "admin" });
+  if (!data) return { error: "forbidden" as const };
+  return { ok: true as const };
+}
+
+export async function saveLab(
+  supabase: Db,
+  userId: string,
+  input: { id?: string | undefined; name: string; status?: "Active" | "Inactive" | undefined },
+) {
+  const gate = await requireAdmin(supabase, userId);
+  if ("error" in gate) return gate;
+
+  if (input.id) {
+    const patch: Record<string, string> = { name: input.name, updated_at: new Date().toISOString() };
+    if (input.status) patch.status = input.status;
+    const { error } = await supabase.from("labs").update(patch).eq("id", input.id);
+    if (error) {
+      if (error.code === "42501") return { error: "forbidden" as const };
+      throw new Error(error.message);
+    }
+    await supabase.from("audit_logs").insert({
+      actor_id: userId,
+      entity_type: "lab",
+      entity_id: input.id,
+      action: `Lab updated: ${input.name}`,
+    });
+    return { ok: true as const };
+  }
+
+  const { data, error } = await supabase.from("labs").insert({ name: input.name }).select("id").single();
+  if (error) {
+    if (error.code === "42501") return { error: "forbidden" as const };
+    throw new Error(error.message);
+  }
+  await supabase.from("audit_logs").insert({
+    actor_id: userId,
+    entity_type: "lab",
+    entity_id: data.id,
+    action: `Lab created: ${input.name}`,
+  });
+  return { ok: true as const, id: data.id };
+}
+
+export async function saveTeam(
+  supabase: Db,
+  userId: string,
+  input: { id?: string | undefined; name: string; labId: string; status?: "Active" | "Inactive" | undefined },
+) {
+  const gate = await requireAdmin(supabase, userId);
+  if ("error" in gate) return gate;
+
+  if (input.id) {
+    const patch: Record<string, string> = {
+      name: input.name,
+      lab_id: input.labId,
+      updated_at: new Date().toISOString(),
+    };
+    if (input.status) patch.status = input.status;
+    const { error } = await supabase.from("teams").update(patch).eq("id", input.id);
+    if (error) {
+      if (error.code === "42501") return { error: "forbidden" as const };
+      throw new Error(error.message);
+    }
+    await supabase.from("audit_logs").insert({
+      actor_id: userId,
+      entity_type: "team",
+      entity_id: input.id,
+      action: `Team updated: ${input.name}`,
+    });
+    return { ok: true as const };
+  }
+
+  const { data, error } = await supabase
+    .from("teams")
+    .insert({ name: input.name, lab_id: input.labId })
+    .select("id")
+    .single();
+  if (error) {
+    if (error.code === "42501") return { error: "forbidden" as const };
+    throw new Error(error.message);
+  }
+  await supabase.from("audit_logs").insert({
+    actor_id: userId,
+    entity_type: "team",
+    entity_id: data.id,
+    action: `Team created: ${input.name}`,
+  });
+  return { ok: true as const, id: data.id };
 }
