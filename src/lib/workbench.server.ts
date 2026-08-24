@@ -508,53 +508,28 @@ export interface CreateCaseInput {
 }
 
 export async function createCase(supabase: Db, userId: string, input: CreateCaseInput) {
-  const { data: person, error: pErr } = await supabase
-    .from("persons")
-    .insert({
-      first_name: input.firstName,
-      last_name: input.lastName,
-      full_name: `${input.firstName} ${input.lastName}`.trim(),
-      email: input.email || null,
-      team_id: input.teamId || null,
-    })
-    .select("id")
-    .single();
-  if (pErr) {
-    if (pErr.code === "42501") return { error: "forbidden" as const };
-    throw new Error(pErr.message);
-  }
-  const { data: row, error } = await supabase
-    .from("cases")
-    .insert({
-      person_id: person.id,
-      case_type: input.caseType === "onboarding" ? "Onboarding" : "Offboarding",
-      employment_type: input.employmentType,
-      start_date: input.startDate,
-      end_date: input.endDate || null,
-      role: input.role || null,
-      location: input.location || null,
-      supervisor_name: input.supervisorName,
-      supervisor_email: input.supervisorEmail || null,
-      priority: input.priority,
-      status: "Preparing",
-      owner_id: userId,
-      notes: input.notes || null,
-      visa_required: input.visaRequired ?? false,
-    })
-    .select("id")
-    .single();
+  const { data: caseId, error } = await supabase.rpc("create_workbench_case", {
+    _first_name: input.firstName,
+    _last_name: input.lastName,
+    _email: input.email || null,
+    _team_id: input.teamId || null,
+    _case_type: input.caseType === "onboarding" ? "Onboarding" : "Offboarding",
+    _employment_type: input.employmentType,
+    _start_date: input.startDate,
+    _end_date: input.endDate || null,
+    _role: input.role || null,
+    _location: input.location || null,
+    _supervisor_name: input.supervisorName,
+    _supervisor_email: input.supervisorEmail || null,
+    _priority: input.priority,
+    _notes: input.notes || null,
+    _visa_required: input.visaRequired ?? false,
+  });
   if (error) {
     if (error.code === "42501") return { error: "forbidden" as const };
     throw new Error(error.message);
   }
-  await supabase.from("audit_logs").insert({
-    actor_id: userId,
-    entity_type: "case",
-    entity_id: row.id,
-    action: `Created ${input.caseType} case`,
-    case_id: row.id,
-  });
-  return { ok: true as const, caseId: row.id };
+  return { ok: true as const, caseId: caseId as string };
 }
 
 export async function updateWorkflowItem(supabase:Db,userId:string,input:{itemId:string;status:string}){
