@@ -107,7 +107,7 @@ function toCaseDto(row: any, accessLevel: AccessLevel, nameOf: Map<string, strin
     id: row.id,
     name,
     initials: initialsOf(name),
-    caseType: row.case_type === "onboarding" ? "Onboarding" : "Offboarding",
+    caseType: String(row.case_type).toLowerCase() === "onboarding" ? "Onboarding" : "Offboarding",
     employmentType: row.employment_type,
     team: person.teams?.name ?? "—",
     startDate: row.start_date,
