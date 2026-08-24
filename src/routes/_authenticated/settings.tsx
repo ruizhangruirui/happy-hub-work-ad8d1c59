@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
-import { saveUserFn } from "@/lib/workbench.functions";
+import { saveLabFn, saveTeamFn, saveUserFn } from "@/lib/workbench.functions";
 import { useWorkbench } from "@/components/workbench/CaseList";
 import type { UserDto, WorkbenchData } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
@@ -19,7 +19,7 @@ export const Route = createFileRoute("/_authenticated/settings")({
   component: SettingsPage,
 });
 
-const SETTING_TABS = ["Users", "Roles & Permissions", "Overview"];
+const SETTING_TABS = ["Users", "Organization", "Roles & Permissions", "Overview"];
 const ROLES = ["admin", "operator", "manager", "viewer"] as const;
 const ROLE_LABELS: Record<string, string> = { admin: "Admin", operator: "Operator", manager: "Manager", viewer: "Viewer" };
 
@@ -97,6 +97,8 @@ function SettingsPage() {
           ))}
         </div>
       ) : null}
+
+      {tab === "Organization" ? <OrgManager wb={wb} isAdmin={isAdmin} /> : null}
 
       {tab === "Roles & Permissions" ? (
         <div className="settingsgrid">

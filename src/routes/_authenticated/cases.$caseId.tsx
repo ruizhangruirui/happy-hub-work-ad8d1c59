@@ -141,6 +141,8 @@ function OverviewTab({ detail }: { detail: CaseDetailDto }) {
           <Field label="Employee ID" value={c.employeeId} />
           <Field label="Phone" value={c.phone} />
           <Field label="Manager" value={c.managerName} />
+          <Field label={t("Supervisor")} value={c.supervisorName} />
+          <Field label={t("Supervisor Email")} value={c.supervisorEmail} />
         </div>
       </div>
       <div className="detailcard">
