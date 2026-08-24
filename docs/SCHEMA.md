@@ -13,7 +13,7 @@ and the authorization decisions.
 | `labs` / `teams` | Organization structure | `teams.lab_id` → lab |
 | `user_scopes` | Data visibility scopes per user | `scope_type` = all_organization / lab / team / assigned_cases |
 | `persons` | Employee records (subject of a case) | `full_name`, `email`, `employee_id`, `team_id`, `manager_id` |
-| `cases` | Onboarding / offboarding cases | `case_type`, `status`, `priority`, `owner_id`, `notes` |
+| `cases` | Onboarding / offboarding cases | `case_type`, `status`, `priority`, `owner_id`, `notes`, `supervisor_name`, `supervisor_email` |
 | `case_members` | Direct sharing per case | `access_level` = viewer / collaborator, `revoked_at` |
 | `checklist_items` | Case checklist | `section`, `status`, `owner_id`, `completed_by` |
 | `tasks` | User-assigned tasks, optionally linked to a checklist item | `case_id`, `checklist_item_id`, `owner_id`, `status` |
