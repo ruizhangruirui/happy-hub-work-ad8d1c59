@@ -78,4 +78,6 @@ Object.assign(zh, {
   "Personal & Contact":"个人与联系方式","Temporary password (share securely, shown once):":"临时密码（仅显示一次，请安全转达）：",
   "Close":"关闭","Inactive":"已停用","Assigned Cases":"分配的事项",
   "This email is already registered.":"该邮箱已注册。","You don't have permission to do that.":"您没有执行此操作的权限。",
+  "This item could not be found.":"未找到该条目。","Upload failed. Please try again.":"上传失败，请重试。",
+  "Search":"搜索","Search results":"搜索结果","No results found.":"未找到匹配结果。","Cases":"事项","Tasks":"任务","People":"人员",
 });
