@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { createCaseFn, getWorkbenchDataFn } from "@/lib/workbench.functions";
 import type { WorkbenchData } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
+import { opErrorMessage } from "@/lib/errors";
 import { fmtDate } from "@/lib/format";
 import { Badge, Empty, Icon, Loading, Modal } from "./ui";
 
@@ -217,7 +218,7 @@ function CreateCaseModal({
         },
       });
       if ("error" in res) {
-        toast.error(t("You don't have permission to do that."));
+        toast.error(opErrorMessage(t, res.error));
         return;
       }
       await qc.invalidateQueries({ queryKey: ["workbench"] });
