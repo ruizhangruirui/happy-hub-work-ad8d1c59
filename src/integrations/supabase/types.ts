@@ -163,6 +163,8 @@ export type Database = {
           role: string | null
           start_date: string | null
           status: string
+          supervisor_email: string | null
+          supervisor_name: string | null
           updated_at: string
           workload: number | null
         }
@@ -182,6 +184,8 @@ export type Database = {
           role?: string | null
           start_date?: string | null
           status?: string
+          supervisor_email?: string | null
+          supervisor_name?: string | null
           updated_at?: string
           workload?: number | null
         }
@@ -201,6 +205,8 @@ export type Database = {
           role?: string | null
           start_date?: string | null
           status?: string
+          supervisor_email?: string | null
+          supervisor_name?: string | null
           updated_at?: string
           workload?: number | null
         }
