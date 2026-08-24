@@ -82,7 +82,7 @@ button { cursor: pointer; }
   min-height: 100vh;
 }
 
-.shell > .content { grid-column: 2; }
+.shell > div:not(.sidebar) { grid-column: 2; min-width: 0; }
 
 .sidebar {
   position: fixed;
