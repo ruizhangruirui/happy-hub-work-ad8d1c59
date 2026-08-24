@@ -45,9 +45,9 @@ export function CaseList({ caseType }: { caseType: "onboarding" | "offboarding" 
   if (isError || !wb) return <Empty icon="alert" title={t("Something went wrong. Please try again.")} />;
 
   const title = caseType === "onboarding" ? "Onboarding" : "Offboarding";
+  const canCreate = ["Admin", "Operator", "Manager"].includes(wb.currentUser.role);
   const statuses = [...new Set(wb.cases.filter((c) => c.caseType.toLowerCase() === caseType).map((c) => c.status))];
   const teams = [...new Set(wb.cases.map((c) => c.team))];
-  const canCreate = wb.currentUser.role !== "Viewer";
 
   return (
     <div>
@@ -158,7 +158,7 @@ export function CaseList({ caseType }: { caseType: "onboarding" | "offboarding" 
         </div>
       )}
 
-      {modalOpen ? <CreateCaseModal caseType={caseType} wb={wb} close={() => setModalOpen(false)} /> : null}
+      {modalOpen && canCreate ? <CreateCaseModal caseType={caseType} wb={wb} close={() => setModalOpen(false)} /> : null}
     </div>
   );
 }
