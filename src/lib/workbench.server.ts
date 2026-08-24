@@ -438,7 +438,6 @@ export async function createTask(
       priority: input.priority,
       due_date: input.dueDate || null,
       owner_id: input.ownerId ?? userId,
-      created_by: userId,
     })
     .select("id")
     .single();
@@ -458,8 +457,8 @@ export async function createTask(
 
 export async function toggleTask(supabase: Db, userId: string, input: { taskId: string; complete: boolean }) {
   const { data, error } = await supabase.rpc("set_task_completion", {
-    p_task_id: input.taskId,
-    p_complete: input.complete,
+    _task_id: input.taskId,
+    _complete: input.complete,
   });
   if (error) {
     if (error.code === "42501") return { error: "forbidden" as const };
@@ -471,8 +470,8 @@ export async function toggleTask(supabase: Db, userId: string, input: { taskId: 
 
 export async function toggleChecklist(supabase: Db, userId: string, input: { itemId: string; complete: boolean }) {
   const { data, error } = await supabase.rpc("set_checklist_completion", {
-    p_item_id: input.itemId,
-    p_complete: input.complete,
+    _item_id: input.itemId,
+    _complete: input.complete,
   });
   if (error) {
     if (error.code === "42501") return { error: "forbidden" as const };
