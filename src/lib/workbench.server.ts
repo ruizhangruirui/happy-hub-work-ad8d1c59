@@ -721,7 +721,7 @@ export async function saveLab(
 
   if (input.id) {
     const patch: Record<string, string> = { name: input.name, updated_at: new Date().toISOString() };
-    if (input.status) patch.status = input.status;
+    if (input.status) patch["status"] = input.status;
     const { error } = await supabase.from("labs").update(patch).eq("id", input.id);
     if (error) {
       if (error.code === "42501") return { error: "forbidden" as const };
@@ -764,7 +764,7 @@ export async function saveTeam(
       lab_id: input.labId,
       updated_at: new Date().toISOString(),
     };
-    if (input.status) patch.status = input.status;
+    if (input.status) patch["status"] = input.status;
     const { error } = await supabase.from("teams").update(patch).eq("id", input.id);
     if (error) {
       if (error.code === "42501") return { error: "forbidden" as const };
