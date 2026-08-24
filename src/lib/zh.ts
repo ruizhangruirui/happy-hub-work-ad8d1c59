@@ -66,6 +66,16 @@ Object.assign(zh, {
   "Confirm your account via the email we sent, then sign in.":"请通过我们发送的邮件确认账号，然后登录。"
 });
 
+Object.assign(zh, {
+  "Workflow":"工作流","Onboarding workflow":"入职工作流","steps complete":"个步骤已完成","Target":"计划日期","No target date":"暂无计划日期",
+  "Leased Labour":"租赁员工","Visa / work permit required":"需要办理签证或工作许可","Not Required":"不适用",
+  "Huawei system onboarding":"办理华为系统入职","Huawei system site access":"办理华为系统入场",
+  "Contract signed":"签署合同","Supplier request & contract":"发送租赁需求并确认合同",
+  "Push to pending onboarding":"推送至待入职","Push to pending entry":"推送至待入场","Visa process":"办理签证",
+  "Payroll email":"发送 Payroll 邮件","Employee ID generated & stakeholder handoff":"生成工号并推送相关部门",
+  "Employee account/password & IT setup":"生成员工账户并通知 IT 配置电脑","Welcome email":"发送 Welcome Email"
+});
+
 // Org management & supervisor fields.
 Object.assign(zh, {
   "Organization":"组织管理","Labs":"实验室","Teams":"团队","Add Lab":"添加实验室","Add Team":"添加团队",

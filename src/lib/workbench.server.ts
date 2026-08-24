@@ -14,6 +14,7 @@ import type {
   TemplateDto,
   UserDto,
   WorkbenchData,
+  WorkflowItemDto,
 } from "./types";
 
 export type Db = SupabaseClient<any, any, any>;
@@ -254,7 +255,7 @@ export async function getCaseDetail(
   if (!row) return { error: "not_found" };
   const r = row as any;
 
-  const [membersRes, profilesRes, checklistRes, historyRes, filesRes] = await Promise.all([
+  const [membersRes, profilesRes, checklistRes, historyRes, filesRes, workflowRes] = await Promise.all([
     supabase.from("case_members").select("id,user_id,access_level").eq("case_id", caseId).is("revoked_at", null),
     supabase.from("profiles").select("id,name,status"),
     supabase.from("checklist_items").select("*").eq("case_id", caseId).order("sort_order"),
@@ -269,6 +270,7 @@ export async function getCaseDetail(
       .select("id,filename,size,content_type,created_at,uploaded_by")
       .eq("case_id", caseId)
       .order("created_at", { ascending: false }),
+    supabase.from("case_workflow_items").select("*").eq("case_id", caseId).order("sequence"),
   ]);
 
   const myMembership = ((membersRes.data ?? []) as any[]).find((m) => m.user_id === userId);
@@ -322,6 +324,11 @@ export async function getCaseDetail(
     at: f.created_at,
     uploadedByName: f.uploaded_by ? (nameOf.get(f.uploaded_by) ?? "") : "",
   }));
+  const workflow: WorkflowItemDto[] = ((workflowRes.data ?? []) as any[]).map((w) => ({
+    id:w.id,key:w.step_key,title:w.title,description:w.description,sequence:w.sequence,
+    targetDate:w.target_date,status:w.status,completedAt:w.completed_at,
+    completedByName:w.completed_by ? (nameOf.get(w.completed_by) ?? null) : null,
+  }));
 
   const assignableUsers = ((profilesRes.data ?? []) as any[])
     .filter((p) => p.status === "Active")
@@ -342,6 +349,7 @@ export async function getCaseDetail(
     members,
     history,
     files,
+    workflow,
     assignableUsers,
   };
 }
@@ -496,6 +504,7 @@ export interface CreateCaseInput {
   supervisorEmail?: string | undefined;
   priority: string;
   notes?: string | undefined;
+  visaRequired?: boolean | undefined;
 }
 
 export async function createCase(supabase: Db, userId: string, input: CreateCaseInput) {
@@ -530,6 +539,7 @@ export async function createCase(supabase: Db, userId: string, input: CreateCase
       status: "Preparing",
       owner_id: userId,
       notes: input.notes || null,
+      visa_required: input.visaRequired ?? false,
     })
     .select("id")
     .single();
@@ -545,6 +555,16 @@ export async function createCase(supabase: Db, userId: string, input: CreateCase
     case_id: row.id,
   });
   return { ok: true as const, caseId: row.id };
+}
+
+export async function updateWorkflowItem(supabase:Db,userId:string,input:{itemId:string;status:string}){
+  const complete=input.status==="Completed";
+  const {data:item}=await supabase.from("case_workflow_items").select("id,case_id,title,status").eq("id",input.itemId).maybeSingle();
+  if(!item)return {error:"not_found" as const};
+  const {error}=await supabase.from("case_workflow_items").update({status:input.status,completed_at:complete?new Date().toISOString():null,completed_by:complete?userId:null,updated_at:new Date().toISOString()}).eq("id",input.itemId);
+  if(error){if(error.code==="42501")return {error:"forbidden" as const};throw new Error(error.message)}
+  await supabase.from("audit_logs").insert({actor_id:userId,entity_type:"workflow_item",entity_id:item.id,action:`Workflow: ${item.title}`,field:"status",previous_value:item.status,new_value:input.status,case_id:item.case_id});
+  return {ok:true as const};
 }
 
 export interface SaveUserInput {

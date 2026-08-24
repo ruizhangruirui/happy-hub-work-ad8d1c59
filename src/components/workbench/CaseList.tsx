@@ -191,6 +191,7 @@ function CreateCaseModal({
     supervisorEmail: "",
     priority: "Medium",
     notes: "",
+    visaRequired: false,
   });
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -215,6 +216,7 @@ function CreateCaseModal({
           supervisorEmail: form.supervisorEmail.trim() || undefined,
           priority: form.priority as "High" | "Medium" | "Low",
           notes: form.notes || undefined,
+          visaRequired: form.visaRequired,
         },
       });
       if ("error" in res) {
@@ -263,7 +265,7 @@ function CreateCaseModal({
           <label>
             {t("Employment Type")}
             <select value={form.employmentType} onChange={set("employmentType")}>
-              {["Employee", "Intern", "Contractor"].map((x) => (
+              {["Employee", "Intern", "Leased Labour"].map((x) => (
                 <option key={x} value={x}>
                   {t(x)}
                 </option>
@@ -271,6 +273,7 @@ function CreateCaseModal({
             </select>
           </label>
         </div>
+        {form.employmentType !== "Leased Labour" ? <label className="workflowcheck"><input type="checkbox" checked={form.visaRequired} onChange={(e)=>setForm(f=>({...f,visaRequired:e.target.checked}))}/>{t("Visa / work permit required")}</label>:null}
         <div className="two">
           <label>
             {caseType === "onboarding" ? t("Start Date") : t("End Date")}

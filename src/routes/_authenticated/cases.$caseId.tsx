@@ -11,6 +11,7 @@ import {
   removeMemberFn,
   shareCaseFn,
   toggleChecklistFn,
+  updateWorkflowItemFn,
 } from "@/lib/workbench.functions";
 import type { CaseDetailDto, WorkbenchData } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
@@ -28,7 +29,7 @@ export const Route = createFileRoute("/_authenticated/cases/$caseId")({
   component: CaseDetailPage,
 });
 
-const TABS = ["Overview", "Checklist", "Communication", "Files", "History"];
+const TABS = ["Overview", "Workflow", "Checklist", "Communication", "Files", "History"];
 
 function CaseDetailPage() {
   const { caseId } = Route.useParams();
@@ -106,6 +107,7 @@ function CaseDetailPage() {
       </div>
 
       {tab === "Overview" ? <OverviewTab detail={detail} /> : null}
+      {tab === "Workflow" ? <WorkflowTab detail={detail} canEdit={canEdit} refresh={refresh} /> : null}
       {tab === "Checklist" ? (
         <ChecklistTab detail={detail} canEdit={canEdit} refresh={refresh} caseId={caseId} />
       ) : null}
@@ -118,6 +120,13 @@ function CaseDetailPage() {
       ) : null}
     </div>
   );
+}
+
+function WorkflowTab({detail,canEdit,refresh}:{detail:CaseDetailDto;canEdit:boolean;refresh:()=>void}){
+  const {t,lang}=useLang();const update=useServerFn(updateWorkflowItemFn);
+  const done=detail.workflow.filter(x=>x.status==="Completed"||x.status==="Not Required").length;
+  const setStatus=async(itemId:string,status:"Not Started"|"In Progress"|"Blocked"|"Completed"|"Not Required")=>{try{const res=await update({data:{itemId,status}});if("error" in res){toast.error(opErrorMessage(t,res.error));return}refresh()}catch{toast.error(t("Something went wrong. Please try again."))}};
+  return <div className="panel workflowpanel"><div className="panelhead"><div><b>{t("Onboarding workflow")}</b><p>{done} / {detail.workflow.length} {t("steps complete")}</p></div><Badge>{`${Math.round(done/Math.max(detail.workflow.length,1)*100)}%`}</Badge></div><div className="workflowline">{detail.workflow.map((item,index)=><div className={`workflowstep ${item.status.toLowerCase().replaceAll(" ","-")}`} key={item.id}><span className="workflowdot">{item.status==="Completed"?"✓":index+1}</span><div className="workflowbody"><div><b>{t(item.title)}</b><Badge>{item.status}</Badge></div>{item.description?<p>{t(item.description)}</p>:null}<small>{item.targetDate?`${t("Target")} ${fmtDate(item.targetDate,lang)}`:t("No target date")}{item.completedByName?` · ${t("Completed by")} ${item.completedByName}`:""}</small>{canEdit&&item.status!=="Not Required"?<select value={item.status} onChange={e=>setStatus(item.id,e.target.value as "Not Started"|"In Progress"|"Blocked"|"Completed")}><option>Not Started</option><option>In Progress</option><option>Blocked</option><option>Completed</option></select>:null}</div></div>)}</div></div>;
 }
 
 function Field({ label, value }: { label: string; value: string | null | undefined }) {

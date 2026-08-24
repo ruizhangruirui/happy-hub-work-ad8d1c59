@@ -72,7 +72,7 @@ export const createCaseFn = createServerFn({ method: "POST" })
         email: z.union([z.string().email().max(320), z.literal("")]).optional(),
         teamId: z.string().uuid().nullable().optional(),
         caseType: z.enum(["onboarding", "offboarding"]),
-        employmentType: z.enum(["Employee", "Intern", "Contractor"]),
+        employmentType: z.enum(["Employee", "Intern", "Leased Labour"]),
         startDate: z.string().min(4).max(10),
         endDate: z.string().max(10).optional(),
         role: z.string().max(120).optional(),
@@ -81,10 +81,19 @@ export const createCaseFn = createServerFn({ method: "POST" })
         supervisorEmail: z.union([z.string().email().max(320), z.literal("")]).optional(),
         priority: z.enum(["High", "Medium", "Low"]),
         notes: z.string().max(2000).optional(),
+        visaRequired: z.boolean().optional(),
       })
       .parse(data),
   )
   .handler(({ data, context }) => wb.createCase(context.supabase as wb.Db, context.userId, data));
+
+export const updateWorkflowItemFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) => z.object({
+    itemId: z.string().uuid(),
+    status: z.enum(["Not Started", "In Progress", "Blocked", "Completed", "Not Required"]),
+  }).parse(data))
+  .handler(({ data, context }) => wb.updateWorkflowItem(context.supabase as wb.Db, context.userId, data));
 
 export const saveUserFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

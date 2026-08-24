@@ -94,6 +94,18 @@ export interface FileDto {
   uploadedByName: string;
 }
 
+export interface WorkflowItemDto {
+  id: string;
+  key: string;
+  title: string;
+  description: string | null;
+  sequence: number;
+  targetDate: string | null;
+  status: "Not Started" | "In Progress" | "Blocked" | "Completed" | "Not Required";
+  completedAt: string | null;
+  completedByName: string | null;
+}
+
 export interface CaseDetailDto {
   case: CaseDto & {
     personEmail: string | null;
@@ -108,6 +120,7 @@ export interface CaseDetailDto {
   members: MemberDto[];
   history: HistoryDto[];
   files: FileDto[];
+  workflow: WorkflowItemDto[];
   assignableUsers: { id: string; name: string }[];
 }
 
