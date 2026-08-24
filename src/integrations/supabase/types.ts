@@ -620,6 +620,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_active_user: { Args: { _user_id: string }; Returns: boolean }
       set_checklist_completion: {
         Args: { _complete: boolean; _item_id: string }
         Returns: undefined

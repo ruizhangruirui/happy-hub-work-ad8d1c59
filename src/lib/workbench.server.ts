@@ -107,7 +107,7 @@ function toCaseDto(row: any, accessLevel: AccessLevel, nameOf: Map<string, strin
     id: row.id,
     name,
     initials: initialsOf(name),
-    caseType: row.case_type === "onboarding" ? "Onboarding" : "Offboarding",
+    caseType: String(row.case_type).toLowerCase() === "onboarding" ? "Onboarding" : "Offboarding",
     employmentType: row.employment_type,
     team: person.teams?.name ?? "—",
     startDate: row.start_date,
@@ -193,7 +193,11 @@ export async function getWorkbenchData(
     person: t.cases?.persons?.full_name ?? "",
     caseId: t.case_id,
     caseType:
-      t.cases?.case_type === "onboarding" ? "Onboarding" : t.cases?.case_type === "offboarding" ? "Offboarding" : null,
+      String(t.cases?.case_type).toLowerCase() === "onboarding"
+        ? "Onboarding"
+        : String(t.cases?.case_type).toLowerCase() === "offboarding"
+          ? "Offboarding"
+          : null,
     due: t.due_date,
     priority: t.priority,
     status: t.status,
@@ -506,7 +510,7 @@ export async function createCase(supabase: Db, userId: string, input: CreateCase
     .from("cases")
     .insert({
       person_id: person.id,
-      case_type: input.caseType,
+      case_type: input.caseType === "onboarding" ? "Onboarding" : "Offboarding",
       employment_type: input.employmentType,
       start_date: input.startDate,
       end_date: input.endDate || null,
@@ -516,7 +520,6 @@ export async function createCase(supabase: Db, userId: string, input: CreateCase
       status: "Preparing",
       owner_id: userId,
       notes: input.notes || null,
-      created_by: userId,
     })
     .select("id")
     .single();

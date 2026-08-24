@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.is_active_user(uuid) FROM anon, public;

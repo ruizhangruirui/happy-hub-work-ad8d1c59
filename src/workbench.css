@@ -17,3 +17,6 @@
 .deniedcard{text-align:center}
 .globalsearch form{margin:0}
 .userform .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+/* Shell grid: sidebar is position:fixed, so the content wrapper must explicitly take column 2 */
+.shell>div{grid-column:2;min-width:0}
