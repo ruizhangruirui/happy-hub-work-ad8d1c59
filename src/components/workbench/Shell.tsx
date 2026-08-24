@@ -38,7 +38,7 @@ export function Shell({ userName, userRole, children }: { userName: string; user
 
   const submitSearch = (e: FormEvent) => {
     e.preventDefault();
-    navigate({ to: "/onboarding", search: { q: search, new: "" } });
+    navigate({ to: "/search", search: { q: search } });
   };
 
   return (

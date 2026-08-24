@@ -645,9 +645,11 @@ export async function listTemplates(
       category: t.category,
       status: t.status,
       updatedAt: t.updated_at,
-      subject: t.subject,
-      body: t.body,
-      variables: t.variables ?? [],
+      subject: t.subject ?? "",
+      body: t.body_html ?? "",
+      variables: ((t.variables ?? []) as any[])
+        .map((v) => (typeof v === "string" ? v : (v?.key ?? "")))
+        .filter(Boolean),
     })),
   };
 }

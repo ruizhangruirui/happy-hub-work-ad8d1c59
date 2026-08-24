@@ -14,6 +14,7 @@ import {
 } from "@/lib/workbench.functions";
 import type { CaseDetailDto, WorkbenchData } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
+import { opErrorMessage } from "@/lib/errors";
 import { fmtDate, fmtDateTime } from "@/lib/format";
 import { Badge, Empty, Icon, Loading, Modal } from "@/components/workbench/ui";
 
@@ -195,22 +196,30 @@ function ChecklistTab({
   const qc = useQueryClient();
 
   const toggle = async (itemId: string, complete: boolean) => {
-    const res = await callToggle({ data: { itemId, complete } });
-    if ("error" in res) {
-      toast.error(t("You don't have permission to do that."));
-      return;
+    try {
+      const res = await callToggle({ data: { itemId, complete } });
+      if ("error" in res) {
+        toast.error(opErrorMessage(t, res.error));
+        return;
+      }
+      refresh();
+      qc.invalidateQueries({ queryKey: ["workbench"] });
+    } catch {
+      toast.error(t("Something went wrong. Please try again."));
     }
-    refresh();
-    qc.invalidateQueries({ queryKey: ["workbench"] });
   };
 
   const assign = async (itemId: string, ownerId: string | null) => {
-    const res = await callAssign({ data: { itemId, ownerId } });
-    if ("error" in res) {
-      toast.error(t("You don't have permission to do that."));
-      return;
+    try {
+      const res = await callAssign({ data: { itemId, ownerId } });
+      if ("error" in res) {
+        toast.error(opErrorMessage(t, res.error));
+        return;
+      }
+      refresh();
+    } catch {
+      toast.error(t("Something went wrong. Please try again."));
     }
-    refresh();
   };
 
   if (detail.checklist.length === 0) {
@@ -229,7 +238,7 @@ function ChecklistTab({
             {detail.checklist
               .filter((item) => item.section === section)
               .map((item) => {
-                const done = item.status === "Done";
+                const done = item.status === "Completed";
                 return (
                   <div className="checkrow" key={item.id}>
                     <button
@@ -352,7 +361,7 @@ function FilesTab({
       toast.success(t("Saved"));
       refresh();
     } catch {
-      toast.error(t("You don't have permission to do that."));
+      toast.error(t("Upload failed. Please try again."));
     } finally {
       setBusy(false);
     }
@@ -488,28 +497,30 @@ function ShareModal({
     try {
       const res = await callShare({ data: { caseId, targetUserId: target, accessLevel: level } });
       if ("error" in res) {
-        toast.error(
-          res.error === "already_shared"
-            ? t("This person is already shared on the case.")
-            : t("You don't have permission to do that."),
-        );
+        toast.error(opErrorMessage(t, res.error));
         return;
       }
       toast.success(t("Saved"));
       refresh();
       setTarget("");
+    } catch {
+      toast.error(t("Something went wrong. Please try again."));
     } finally {
       setBusy(false);
     }
   };
 
   const remove = async (memberId: string) => {
-    const res = await callRemove({ data: { memberId } });
-    if ("error" in res) {
-      toast.error(t("You don't have permission to do that."));
-      return;
+    try {
+      const res = await callRemove({ data: { memberId } });
+      if ("error" in res) {
+        toast.error(opErrorMessage(t, res.error));
+        return;
+      }
+      refresh();
+    } catch {
+      toast.error(t("Something went wrong. Please try again."));
     }
-    refresh();
   };
 
   return (

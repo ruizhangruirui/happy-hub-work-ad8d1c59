@@ -7,6 +7,7 @@ import { getCaseDetailFn, listTemplatesFn, saveEmailDraftFn } from "@/lib/workbe
 import { useWorkbench } from "@/components/workbench/CaseList";
 import type { CaseDetailDto, TemplateDto } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
+import { opErrorMessage } from "@/lib/errors";
 import { fmtDate } from "@/lib/format";
 import { Empty, Icon, Loading } from "@/components/workbench/ui";
 
@@ -23,8 +24,8 @@ export const Route = createFileRoute("/_authenticated/email")({
   component: EmailPage,
 });
 
-function fill(text: string, vars: Record<string, string>): string {
-  return text.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key: string) => vars[key] ?? `{{${key}}}`);
+function fill(text: string | null | undefined, vars: Record<string, string>): string {
+  return (text ?? "").replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key: string) => vars[key] ?? `{{${key}}}`);
 }
 
 function EmailPage() {
@@ -81,16 +82,20 @@ function EmailPage() {
 
   const saveDraft = async () => {
     if (!ready) return;
-    const res = await callSaveDraft({
-      data: { caseId, templateId, subject, body, recipient },
-    });
-    if ("error" in res) {
-      toast.error(t("You don't have permission to do that."));
-      return;
+    try {
+      const res = await callSaveDraft({
+        data: { caseId, templateId, subject, body, recipient },
+      });
+      if ("error" in res) {
+        toast.error(opErrorMessage(t, res.error));
+        return;
+      }
+      setSaved(true);
+      toast.success(t("Saved"));
+      setTimeout(() => setSaved(false), 2500);
+    } catch {
+      toast.error(t("Something went wrong. Please try again."));
     }
-    setSaved(true);
-    toast.success(t("Saved"));
-    setTimeout(() => setSaved(false), 2500);
   };
 
   const openOutlook = () => {

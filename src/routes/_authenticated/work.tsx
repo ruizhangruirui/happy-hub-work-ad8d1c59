@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { getWorkbenchDataFn, toggleTaskFn } from "@/lib/workbench.functions";
 import type { WorkbenchData } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
+import { opErrorMessage } from "@/lib/errors";
 import { fmtDate, greetingFor, initialsOf } from "@/lib/format";
 import { Badge, Empty, Icon, Loading } from "@/components/workbench/ui";
 
@@ -34,13 +35,13 @@ export function WorkPage() {
 
   const derived = useMemo(() => {
     if (!data || "error" in data) return null;
-    const open = data.tasks.filter((x) => x.status !== "Done" && x.status !== "Cancelled");
+    const open = data.tasks.filter((x) => x.status !== "Completed" && x.status !== "Cancelled");
     const now = Date.now();
     const in14d = now + 14 * 86400000;
     const dueSoon = open.filter((x) => x.due && new Date(x.due).getTime() <= in14d);
     const waiting = open.filter((x) => x.status === "Waiting" || x.status === "Blocked");
     const today = new Date().toISOString().slice(0, 10);
-    const completedToday = data.tasks.filter((x) => x.status === "Done" && x.completedAt?.slice(0, 10) === today);
+    const completedToday = data.tasks.filter((x) => x.status === "Completed" && x.completedAt?.slice(0, 10) === today);
     const upcoming = data.cases
       .filter((c) => c.caseType === "Onboarding" && c.startDate >= today)
       .sort((a, b) => a.startDate.localeCompare(b.startDate))
@@ -55,12 +56,16 @@ export function WorkPage() {
   const wb = data as WorkbenchData;
 
   const onToggle = async (taskId: string, complete: boolean) => {
-    const res = await callToggle({ data: { taskId, complete } });
-    if ("error" in res) {
-      toast.error(t("You don't have permission to do that."));
-      return;
+    try {
+      const res = await callToggle({ data: { taskId, complete } });
+      if ("error" in res) {
+        toast.error(opErrorMessage(t, res.error));
+        return;
+      }
+      await qc.invalidateQueries({ queryKey: ["workbench"] });
+    } catch {
+      toast.error(t("Something went wrong. Please try again."));
     }
-    await qc.invalidateQueries({ queryKey: ["workbench"] });
   };
 
   const firstName = wb.currentUser.name.split(" ")[0];
@@ -163,7 +168,7 @@ export function WorkPage() {
               {derived.open.map((task) => (
                 <div className="taskrow" key={task.id}>
                   <button
-                    className={`taskcheck${task.status === "Done" ? " done" : ""}`}
+                    className={`taskcheck${task.status === "Completed" ? " done" : ""}`}
                     onClick={() => onToggle(task.id, true)}
                     aria-label={t("Mark Done")}
                   >

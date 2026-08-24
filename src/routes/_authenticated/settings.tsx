@@ -7,6 +7,7 @@ import { saveLabFn, saveTeamFn, saveUserFn } from "@/lib/workbench.functions";
 import { useWorkbench } from "@/components/workbench/CaseList";
 import type { UserDto, WorkbenchData } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
+import { opErrorMessage } from "@/lib/errors";
 import { Badge, Empty, Icon, Loading, Modal } from "@/components/workbench/ui";
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -187,11 +188,7 @@ function UserModal({ wb, user, close }: { wb: WorkbenchData; user?: UserDto; clo
         },
       });
       if ("error" in res) {
-        setError(
-          res.error === "email_exists"
-            ? t("This email is already registered.")
-            : t("You don't have permission to do that."),
-        );
+        setError(opErrorMessage(t, res.error));
         return;
       }
       await qc.invalidateQueries({ queryKey: ["workbench"] });
@@ -328,7 +325,7 @@ function OrgManager({ wb, isAdmin }: { wb: WorkbenchData; isAdmin: boolean }) {
     try {
       const res = await fn();
       if ("error" in res) {
-        toast.error(t("You don't have permission to do that."));
+        toast.error(opErrorMessage(t, res.error));
         return;
       }
       await qc.invalidateQueries({ queryKey: ["workbench"] });
