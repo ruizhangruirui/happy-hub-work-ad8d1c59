@@ -146,6 +146,59 @@ export type Database = {
           },
         ]
       }
+      case_workflow_items: {
+        Row: {
+          case_id: string
+          completed_at: string | null
+          completed_by: string | null
+          created_at: string
+          description: string | null
+          id: string
+          sequence: number
+          status: string
+          step_key: string
+          target_date: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          case_id: string
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          sequence: number
+          status?: string
+          step_key: string
+          target_date?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          case_id?: string
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          sequence?: number
+          status?: string
+          step_key?: string
+          target_date?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "case_workflow_items_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cases: {
         Row: {
           archived_at: string | null
@@ -166,6 +219,7 @@ export type Database = {
           supervisor_email: string | null
           supervisor_name: string | null
           updated_at: string
+          visa_required: boolean
           workload: number | null
         }
         Insert: {
@@ -187,6 +241,7 @@ export type Database = {
           supervisor_email?: string | null
           supervisor_name?: string | null
           updated_at?: string
+          visa_required?: boolean
           workload?: number | null
         }
         Update: {
@@ -208,6 +263,7 @@ export type Database = {
           supervisor_email?: string | null
           supervisor_name?: string | null
           updated_at?: string
+          visa_required?: boolean
           workload?: number | null
         }
         Relationships: [
@@ -625,6 +681,10 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      initialize_case_workflow: {
+        Args: { _case_id: string }
+        Returns: undefined
       }
       is_active_user: { Args: { _user_id: string }; Returns: boolean }
       set_checklist_completion: {
