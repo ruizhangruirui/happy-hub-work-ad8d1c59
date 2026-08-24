@@ -65,3 +65,17 @@ Object.assign(zh, {
   "All Organization":"整个组织","Assigned Cases":"分配的事项",
   "Confirm your account via the email we sent, then sign in.":"请通过我们发送的邮件确认账号，然后登录。"
 });
+
+// Org management & supervisor fields.
+Object.assign(zh, {
+  "Organization":"组织管理","Labs":"实验室","Teams":"团队","Add Lab":"添加实验室","Add Team":"添加团队",
+  "New lab name":"新实验室名称","New team name":"新团队名称","Deactivate":"停用","Activate":"启用",
+  "Supervisor":"主管","Supervisor Email":"主管邮箱","Supervisor full name":"主管姓名",
+  "Something went wrong. Please try again.":"出了点问题，请重试。","Saved":"已保存","Add":"添加","Add User":"添加用户","Edit User":"编辑用户",
+  "All Status":"全部状态","All Types":"全部类型","All Teams":"全部团队","No cases found.":"未找到事项。","adjust filters":"请调整筛选条件","Create one":"新建一个",
+  "TYPE":"类型","DATE":"日期","PRIORITY":"优先级","Scope":"数据范围","Your access level":"您的访问级别",
+  "First Name":"名","Last Name":"姓","Role / Title":"职位","Location":"工作地点","Create Case":"创建事项",
+  "Personal & Contact":"个人与联系方式","Temporary password (share securely, shown once):":"临时密码（仅显示一次，请安全转达）：",
+  "Close":"关闭","Inactive":"已停用","Assigned Cases":"分配的事项",
+  "This email is already registered.":"该邮箱已注册。","You don't have permission to do that.":"您没有执行此操作的权限。",
+});
