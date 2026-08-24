@@ -51,6 +51,8 @@ export interface CaseDto {
   accessLevel: AccessLevel;
   role: string | null;
   location: string | null;
+  supervisorName: string | null;
+  supervisorEmail: string | null;
 }
 
 export interface ChecklistDto {
@@ -126,7 +128,7 @@ export interface WorkbenchData {
   cases: CaseDto[];
   sharedCases: CaseDto[];
   users: UserDto[];
-  labs: { id: string; name: string }[];
-  teams: { id: string; name: string; labId: string | null }[];
+  labs: { id: string; name: string; status: string }[];
+  teams: { id: string; name: string; labId: string | null; status: string }[];
   permissions: Record<string, string[]>;
 }

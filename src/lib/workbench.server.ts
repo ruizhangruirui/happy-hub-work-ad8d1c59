@@ -119,6 +119,8 @@ function toCaseDto(row: any, accessLevel: AccessLevel, nameOf: Map<string, strin
     accessLevel,
     role: row.role,
     location: row.location,
+    supervisorName: row.supervisor_name ?? null,
+    supervisorEmail: row.supervisor_email ?? null,
   };
 }
 
