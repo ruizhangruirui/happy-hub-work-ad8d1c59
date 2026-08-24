@@ -186,6 +186,8 @@ function CreateCaseModal({
     endDate: "",
     role: "",
     location: "",
+    supervisorName: "",
+    supervisorEmail: "",
     priority: "Medium",
     notes: "",
   });
@@ -208,6 +210,8 @@ function CreateCaseModal({
           endDate: form.endDate || undefined,
           role: form.role || undefined,
           location: form.location || undefined,
+          supervisorName: form.supervisorName.trim(),
+          supervisorEmail: form.supervisorEmail.trim() || undefined,
           priority: form.priority as "High" | "Medium" | "Low",
           notes: form.notes || undefined,
         },
@@ -290,6 +294,22 @@ function CreateCaseModal({
           <label>
             {t("Location")}
             <input value={form.location} onChange={set("location")} maxLength={120} />
+          </label>
+        </div>
+        <div className="two">
+          <label>
+            {t("Supervisor")}
+            <input
+              value={form.supervisorName}
+              onChange={set("supervisorName")}
+              required
+              maxLength={120}
+              placeholder={t("Supervisor full name")}
+            />
+          </label>
+          <label>
+            {t("Supervisor Email")} ({t("Optional")})
+            <input type="email" value={form.supervisorEmail} onChange={set("supervisorEmail")} maxLength={320} />
           </label>
         </div>
         <label>
