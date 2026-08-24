@@ -260,7 +260,7 @@ export async function getCaseDetail(
     supabase.from("checklist_items").select("*").eq("case_id", caseId).order("sort_order"),
     supabase
       .from("audit_logs")
-      .select("id,actor_id,action,field,old_value,new_value,created_at")
+      .select("id,actor_id,action,field,previous_value,new_value,created_at")
       .eq("case_id", caseId)
       .order("created_at", { ascending: false })
       .limit(50),
@@ -309,7 +309,7 @@ export async function getCaseDetail(
     actorName: h.actor_id ? (nameOf.get(h.actor_id) ?? "System") : "System",
     action: h.action,
     field: h.field,
-    oldValue: h.old_value,
+    oldValue: h.previous_value,
     newValue: h.new_value,
     at: h.created_at,
   }));
