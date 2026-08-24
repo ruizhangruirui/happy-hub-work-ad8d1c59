@@ -1490,7 +1490,7 @@ button { cursor: pointer; }
 
 @media (max-width: 760px) {
   .shell { grid-template-columns: 1fr; }
-  .shell > .content { grid-column: 1; }
+  .shell > div:not(.sidebar) { grid-column: 1; }
   .sidebar {
     position: static;
     width: 100%;
