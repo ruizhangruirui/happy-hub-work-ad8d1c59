@@ -4,6 +4,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useLang } from "@/lib/i18n";
 
 export const Route = createFileRoute("/auth")({
+  // No SEO value and the code-split route component hydration-mismatches
+  // against the SSR Suspense fallback — render client-side only.
+  ssr: false,
   head: () => ({
     meta: [
       { title: "Sign In · Team Workbench" },
