@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
-import { saveUserFn } from "@/lib/workbench.functions";
+import { saveLabFn, saveTeamFn, saveUserFn } from "@/lib/workbench.functions";
 import { useWorkbench } from "@/components/workbench/CaseList";
 import type { UserDto, WorkbenchData } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
@@ -19,7 +19,7 @@ export const Route = createFileRoute("/_authenticated/settings")({
   component: SettingsPage,
 });
 
-const SETTING_TABS = ["Users", "Roles & Permissions", "Overview"];
+const SETTING_TABS = ["Users", "Organization", "Roles & Permissions", "Overview"];
 const ROLES = ["admin", "operator", "manager", "viewer"] as const;
 const ROLE_LABELS: Record<string, string> = { admin: "Admin", operator: "Operator", manager: "Manager", viewer: "Viewer" };
 
@@ -97,6 +97,8 @@ function SettingsPage() {
           ))}
         </div>
       ) : null}
+
+      {tab === "Organization" ? <OrgManager wb={wb} isAdmin={isAdmin} /> : null}
 
       {tab === "Roles & Permissions" ? (
         <div className="settingsgrid">
@@ -306,5 +308,150 @@ function UserModal({ wb, user, close }: { wb: WorkbenchData; user?: UserDto; clo
         </form>
       )}
     </Modal>
+  );
+}
+
+function OrgManager({ wb, isAdmin }: { wb: WorkbenchData; isAdmin: boolean }) {
+  const { t } = useLang();
+  const qc = useQueryClient();
+  const callSaveLab = useServerFn(saveLabFn);
+  const callSaveTeam = useServerFn(saveTeamFn);
+  const [labName, setLabName] = useState("");
+  const [teamName, setTeamName] = useState("");
+  const [teamLab, setTeamLab] = useState(wb.labs[0]?.id ?? "");
+  const [busy, setBusy] = useState(false);
+
+  const labNameOf = (id: string | null) => wb.labs.find((l) => l.id === id)?.name ?? "—";
+
+  const run = async (fn: () => Promise<{ error?: string } | { ok: true }>) => {
+    setBusy(true);
+    try {
+      const res = await fn();
+      if ("error" in res) {
+        toast.error(t("You don't have permission to do that."));
+        return;
+      }
+      await qc.invalidateQueries({ queryKey: ["workbench"] });
+      toast.success(t("Saved"));
+    } catch {
+      toast.error(t("Something went wrong. Please try again."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const addLab = async (e: FormEvent) => {
+    e.preventDefault();
+    const name = labName.trim();
+    if (!name) return;
+    await run(() => callSaveLab({ data: { name } }));
+    setLabName("");
+  };
+
+  const addTeam = async (e: FormEvent) => {
+    e.preventDefault();
+    const name = teamName.trim();
+    if (!name || !teamLab) return;
+    await run(() => callSaveTeam({ data: { name, labId: teamLab } }));
+    setTeamName("");
+  };
+
+  const toggleLab = (id: string, name: string, status: string) =>
+    run(() =>
+      callSaveLab({ data: { id, name, status: status === "Active" ? "Inactive" : "Active" } }),
+    );
+
+  const toggleTeam = (id: string, name: string, labId: string | null, status: string) =>
+    run(() =>
+      callSaveTeam({
+        data: { id, name, labId: labId ?? wb.labs[0]?.id ?? "", status: status === "Active" ? "Inactive" : "Active" },
+      }),
+    );
+
+  return (
+    <div className="orggrid">
+      <div className="panel">
+        <div className="panelhead">
+          <div>
+            <b>{t("Labs")}</b>
+            <p>{wb.labs.length} {t("labs")}</p>
+          </div>
+        </div>
+        {wb.labs.map((l) => (
+          <div className="orgrow" key={l.id}>
+            <b>{l.name}</b>
+            <Badge>{l.status}</Badge>
+            {isAdmin ? (
+              <button className="textbutton" disabled={busy} onClick={() => toggleLab(l.id, l.name, l.status)}>
+                {l.status === "Active" ? t("Deactivate") : t("Activate")}
+              </button>
+            ) : (
+              <span />
+            )}
+          </div>
+        ))}
+        {isAdmin ? (
+          <form className="orgadd" onSubmit={addLab}>
+            <input
+              value={labName}
+              onChange={(e) => setLabName(e.target.value)}
+              placeholder={t("New lab name")}
+              maxLength={120}
+            />
+            <button type="submit" className="secondary" disabled={busy || !labName.trim()}>
+              <Icon name="plus" /> {t("Add Lab")}
+            </button>
+          </form>
+        ) : null}
+      </div>
+
+      <div className="panel">
+        <div className="panelhead">
+          <div>
+            <b>{t("Teams")}</b>
+            <p>{wb.teams.length} {t("teams")}</p>
+          </div>
+        </div>
+        {wb.teams.map((tm) => (
+          <div className="orgrow" key={tm.id}>
+            <b>
+              {tm.name} <span className="labname">· {labNameOf(tm.labId)}</span>
+            </b>
+            <Badge>{tm.status}</Badge>
+            {isAdmin ? (
+              <button
+                className="textbutton"
+                disabled={busy}
+                onClick={() => toggleTeam(tm.id, tm.name, tm.labId, tm.status)}
+              >
+                {tm.status === "Active" ? t("Deactivate") : t("Activate")}
+              </button>
+            ) : (
+              <span />
+            )}
+          </div>
+        ))}
+        {isAdmin ? (
+          <form className="orgadd" onSubmit={addTeam}>
+            <input
+              value={teamName}
+              onChange={(e) => setTeamName(e.target.value)}
+              placeholder={t("New team name")}
+              maxLength={120}
+            />
+            <select value={teamLab} onChange={(e) => setTeamLab(e.target.value)}>
+              {wb.labs.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+            <button type="submit" className="secondary" disabled={busy || !teamName.trim() || !teamLab}>
+              <Icon name="plus" /> {t("Add Team")}
+            </button>
+          </form>
+        ) : null}
+      </div>
+    </div>
   );
 }

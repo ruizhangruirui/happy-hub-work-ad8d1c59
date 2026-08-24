@@ -77,6 +77,8 @@ export const createCaseFn = createServerFn({ method: "POST" })
         endDate: z.string().max(10).optional(),
         role: z.string().max(120).optional(),
         location: z.string().max(120).optional(),
+        supervisorName: z.string().min(1).max(120),
+        supervisorEmail: z.union([z.string().email().max(320), z.literal("")]).optional(),
         priority: z.enum(["High", "Medium", "Low"]),
         notes: z.string().max(2000).optional(),
       })
@@ -128,3 +130,30 @@ export const assignChecklistOwnerFn = createServerFn({ method: "POST" })
     z.object({ itemId: z.string().uuid(), ownerId: z.string().uuid().nullable() }).parse(data),
   )
   .handler(({ data, context }) => wb.assignChecklistOwner(context.supabase as wb.Db, context.userId, data));
+
+export const saveLabFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) =>
+    z
+      .object({
+        id: z.string().uuid().optional(),
+        name: z.string().min(1).max(120),
+        status: z.enum(["Active", "Inactive"]).optional(),
+      })
+      .parse(data),
+  )
+  .handler(({ data, context }) => wb.saveLab(context.supabase as wb.Db, context.userId, data));
+
+export const saveTeamFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) =>
+    z
+      .object({
+        id: z.string().uuid().optional(),
+        name: z.string().min(1).max(120),
+        labId: z.string().uuid(),
+        status: z.enum(["Active", "Inactive"]).optional(),
+      })
+      .parse(data),
+  )
+  .handler(({ data, context }) => wb.saveTeam(context.supabase as wb.Db, context.userId, data));
