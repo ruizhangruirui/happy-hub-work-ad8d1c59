@@ -15,6 +15,7 @@ import type {
   UserDto,
   WorkbenchData,
   WorkflowItemDto,
+  RosterPersonDto,
 } from "./types";
 
 export type Db = SupabaseClient<any, any, any>;
@@ -530,6 +531,53 @@ export async function createCase(supabase: Db, userId: string, input: CreateCase
     throw new Error(error.message);
   }
   return { ok: true as const, caseId: caseId as string };
+}
+
+export async function setCaseConfirmation(supabase: Db, userId: string, caseId: string, confirmed: boolean) {
+  const identity = await loadIdentity(supabase, userId);
+  if (!identity || !["admin", "operator", "manager"].includes(identity.role)) {
+    return { error: "forbidden" as const };
+  }
+  const { data: current } = await supabase.from("cases").select("id,case_type,status").eq("id", caseId).maybeSingle();
+  if (!current) return { error: "not_found" as const };
+  const nextStatus = confirmed ? "Confirmed" : "Preparing";
+  const { error } = await supabase.from("cases").update({ status: nextStatus }).eq("id", caseId);
+  if (error) {
+    if (error.code === "42501") return { error: "forbidden" as const };
+    throw new Error(error.message);
+  }
+  await supabase.from("audit_logs").insert({
+    actor_id: userId,
+    entity_type: "case",
+    entity_id: caseId,
+    action: confirmed ? `Confirmed ${String(current.case_type).toLowerCase()}` : "Reopened case",
+    field: "status",
+    previous_value: current.status,
+    new_value: nextStatus,
+    case_id: caseId,
+  });
+  return { ok: true as const };
+}
+
+export async function getActiveRoster(supabase: Db, userId: string): Promise<RosterPersonDto[] | { error: "access_denied" }> {
+  const identity = await loadIdentity(supabase, userId);
+  if (!identity) return { error: "access_denied" };
+  const { data, error } = await supabase.from("active_employee_roster").select("*").order("full_name");
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as any[]).map((row) => ({
+    personId: row.person_id,
+    caseId: row.case_id,
+    name: row.full_name,
+    email: row.email,
+    employeeId: row.employee_id,
+    phone: row.phone,
+    employmentType: row.employment_type ?? "Employee",
+    role: row.role,
+    location: row.location,
+    team: row.team_name ?? "—",
+    startDate: row.start_date,
+    supervisorName: row.supervisor_name,
+  }));
 }
 
 export async function updateWorkflowItem(supabase:Db,userId:string,input:{itemId:string;status:string}){

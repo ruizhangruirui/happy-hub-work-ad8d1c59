@@ -135,6 +135,21 @@ export interface TemplateDto {
   variables: string[];
 }
 
+export interface RosterPersonDto {
+  personId: string;
+  caseId: string;
+  name: string;
+  email: string | null;
+  employeeId: string | null;
+  phone: string | null;
+  employmentType: string;
+  role: string | null;
+  location: string | null;
+  team: string;
+  startDate: string;
+  supervisorName: string | null;
+}
+
 export interface WorkbenchData {
   currentUser: CurrentUser;
   tasks: TaskDto[];

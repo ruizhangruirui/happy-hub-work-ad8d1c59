@@ -67,6 +67,15 @@ Object.assign(zh, {
 });
 
 Object.assign(zh, {
+  "Active Roster":"在职人员","PEOPLE OPERATIONS":"人员运营","Confirmed employees active as of today":"截至今天已确认入职的在职人员",
+  "Active People":"在职人数","Employees":"正式员工","Interns":"实习生","Search roster":"搜索姓名、工号、邮箱、职位……",
+  "All Locations":"全部地点","people":"人","No active people found.":"未找到在职人员。",
+  "Confirm an onboarding case; the person will appear on their start date.":"确认入职后，该人员将在入职当天自动进入名单。",
+  "Confirm Onboarding":"确认入职","Confirm Offboarding":"确认离职","Onboarding confirmed":"已确认入职",
+  "Offboarding confirmed":"已确认离职","Case reopened":"事项已恢复","Confirmed":"已确认"
+});
+
+Object.assign(zh, {
   "Workflow":"工作流","Onboarding workflow":"入职工作流","steps complete":"个步骤已完成","Target":"计划日期","No target date":"暂无计划日期",
   "Leased Labour":"租赁员工","Visa / work permit required":"需要办理签证或工作许可","Not Required":"不适用",
   "Huawei system onboarding":"办理华为系统入职","Huawei system site access":"办理华为系统入场",

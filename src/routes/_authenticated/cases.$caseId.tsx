@@ -12,6 +12,7 @@ import {
   shareCaseFn,
   toggleChecklistFn,
   updateWorkflowItemFn,
+  setCaseConfirmationFn,
 } from "@/lib/workbench.functions";
 import type { CaseDetailDto, WorkbenchData } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
@@ -45,6 +46,7 @@ function CaseDetailPage() {
   const { data: wbData } = useQuery({ queryKey: ["workbench"], queryFn: () => fetchWb() });
   const [tab, setTab] = useState("Overview");
   const [shareOpen, setShareOpen] = useState(false);
+  const setConfirmation = useServerFn(setCaseConfirmationFn);
 
   if (isLoading) return <Loading />;
   if (!data || "error" in data) {
@@ -63,6 +65,21 @@ function CaseDetailPage() {
   const canEdit = isOwner || c.accessLevel === "Collaborator";
   const wb: WorkbenchData | null = wbData && !("error" in wbData) ? wbData : null;
   const refresh = () => qc.invalidateQueries({ queryKey: ["case", caseId] });
+  const changeConfirmation = async (confirmed: boolean) => {
+    try {
+      const res = await setConfirmation({ data: { caseId, confirmed } });
+      if ("error" in res) {
+        toast.error(opErrorMessage(t, res.error));
+        return;
+      }
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["case", caseId] }),
+        qc.invalidateQueries({ queryKey: ["workbench"] }),
+        qc.invalidateQueries({ queryKey: ["active-roster"] }),
+      ]);
+      toast.success(t(confirmed ? (c.caseType === "Onboarding" ? "Onboarding confirmed" : "Offboarding confirmed") : "Case reopened"));
+    } catch { toast.error(t("Something went wrong. Please try again.")); }
+  };
 
   return (
     <div>
@@ -90,6 +107,11 @@ function CaseDetailPage() {
           <Badge>{c.status}</Badge>
           <Badge>{c.priority}</Badge>
           <Badge>{c.accessLevel}</Badge>
+          {canEdit ? (
+            <button className={c.status === "Confirmed" ? "secondary" : "primary"} onClick={() => changeConfirmation(c.status !== "Confirmed")}>
+              <Icon name={c.status === "Confirmed" ? "history" : "check"} /> {t(c.status === "Confirmed" ? "Reopen" : c.caseType === "Onboarding" ? "Confirm Onboarding" : "Confirm Offboarding")}
+            </button>
+          ) : null}
           {isOwner ? (
             <button className="primary" onClick={() => setShareOpen(true)}>
               <Icon name="link" /> {t("Share")}

@@ -12,6 +12,7 @@ const NAV = [
     items: [
       { to: "/onboarding", icon: "onboarding", label: "Onboarding" },
       { to: "/offboarding", icon: "offboarding", label: "Offboarding" },
+      { to: "/roster", icon: "users", label: "Active Roster" },
     ],
   },
   { group: "COMMUNICATION", items: [{ to: "/email", icon: "mail", label: "Email Center" }] },

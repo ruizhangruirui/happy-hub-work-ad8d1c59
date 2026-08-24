@@ -184,6 +184,26 @@ button { cursor: pointer; }
 
 .sidebarfoot { margin-top: auto; padding-top: 12px; }
 
+.rosterhead { display:flex; align-items:flex-end; justify-content:space-between; gap:20px; }
+.rosterstats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; margin:22px 0 14px; }
+.statcard { background:#fff; border:1px solid var(--line); border-radius:12px; padding:17px 19px; box-shadow:0 2px 8px rgba(23,32,51,.04); }
+.statcard span { color:var(--muted); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
+.statcard strong { display:block; margin-top:8px; color:var(--ink); font-size:27px; }
+.rosterfilters { display:flex; align-items:center; gap:10px; padding:12px; background:#fff; border:1px solid var(--line); border-radius:12px 12px 0 0; }
+.rosterfilters select,.rosterfilters input { min-height:38px; border:1px solid var(--line); border-radius:7px; background:#fff; padding:0 10px; }
+.rosterfilters > span { margin-left:auto; color:var(--muted); font-size:12px; white-space:nowrap; }
+.rostersearch { display:flex; align-items:center; gap:7px; flex:1; max-width:360px; }
+.rostersearch input { width:100%; }
+.rosterpanel { overflow:auto; min-height:280px; background:#fff; border:1px solid var(--line); border-top:0; border-radius:0 0 12px 12px; }
+.rostertable { width:100%; min-width:1100px; border-collapse:collapse; font-size:13px; }
+.rostertable th { position:sticky; top:0; z-index:1; background:#f5f7fa; color:var(--muted); text-align:left; font-size:11px; letter-spacing:.04em; white-space:nowrap; }
+.rostertable th,.rostertable td { padding:12px 14px; border-bottom:1px solid var(--line); }
+.rostertable tbody tr { cursor:pointer; transition:background .15s; }
+.rostertable tbody tr:hover { background:#f7f9fc; }
+.sorthead { border:0; background:transparent; padding:0; color:inherit; font:inherit; letter-spacing:inherit; cursor:pointer; }
+
+@media (max-width: 900px) { .rosterstats { grid-template-columns:repeat(2,1fr); } .rosterfilters { flex-wrap:wrap; } .rostersearch { max-width:none; flex-basis:100%; } }
+
 .support {
   width: 100%;
   display: flex;

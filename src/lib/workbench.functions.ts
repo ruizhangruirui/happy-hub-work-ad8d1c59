@@ -87,6 +87,15 @@ export const createCaseFn = createServerFn({ method: "POST" })
   )
   .handler(({ data, context }) => wb.createCase(context.supabase as wb.Db, context.userId, data));
 
+export const setCaseConfirmationFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) => z.object({ caseId: z.string().uuid(), confirmed: z.boolean() }).parse(data))
+  .handler(({ data, context }) => wb.setCaseConfirmation(context.supabase as wb.Db, context.userId, data.caseId, data.confirmed));
+
+export const getActiveRosterFn = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(({ context }) => wb.getActiveRoster(context.supabase as wb.Db, context.userId));
+
 export const updateWorkflowItemFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data) => z.object({
