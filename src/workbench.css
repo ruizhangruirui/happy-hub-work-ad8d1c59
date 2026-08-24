@@ -615,6 +615,8 @@ button { cursor: pointer; }
 
 /* ---------------------------------- badges ---------------------------------- */
 
+/* One recipe for every badge: soft tinted bg + strong text + same-hue border.
+   Hue comes from the semantic palette above — never invent one-off colors. */
 .badge {
   display: inline-flex;
   align-items: center;
@@ -622,25 +624,33 @@ button { cursor: pointer; }
   border-radius: 999px;
   padding: 3px 10px;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 650;
   line-height: 1.4;
   white-space: nowrap;
   background: var(--bg);
   color: var(--ink-sub);
+  border: 1px solid var(--line);
 }
 
-.b-high, .b-waiting, .b-blocked { background: var(--amber-soft); color: var(--amber); }
-.b-medium, .b-preparing, .b-in-progress, .b-draft, .b-not-started { background: var(--brand-soft); color: var(--brand); }
-.b-low, .b-ready, .b-completed, .b-published, .b-active, .b-done { background: var(--green-soft); color: var(--green); }
-.b-open, .b-onboarding { background: var(--blue-soft); color: var(--blue); }
-.b-offboarding { background: var(--violet-soft); color: var(--violet); }
-.b-required, .b-collaborator { background: var(--violet-soft); color: var(--violet); }
-.b-viewer, .b-scoped, .b-manager, .b-operator { background: var(--blue-soft); color: var(--blue); }
-.b-owner, .b-admin { background: var(--brand-soft); color: var(--brand); }
-.b-inactive, .b-cancelled { background: var(--bg); color: var(--ink-faint); }
-.b-employee { background: var(--green-soft); color: var(--green); }
-.b-intern { background: var(--amber-soft); color: var(--amber); }
-.b-contractor { background: var(--violet-soft); color: var(--violet); }
+.b-amber  { background: var(--amber-soft);  color: var(--amber);  border-color: color-mix(in srgb, var(--amber) 28%, transparent); }
+.b-brand  { background: var(--brand-soft);  color: var(--brand);  border-color: color-mix(in srgb, var(--brand) 28%, transparent); }
+.b-green  { background: var(--green-soft);  color: var(--green);  border-color: color-mix(in srgb, var(--green) 28%, transparent); }
+.b-blue   { background: var(--blue-soft);   color: var(--blue);   border-color: color-mix(in srgb, var(--blue) 28%, transparent); }
+.b-violet { background: var(--violet-soft); color: var(--violet); border-color: color-mix(in srgb, var(--violet) 28%, transparent); }
+.b-red    { background: var(--red-soft);    color: var(--red);    border-color: color-mix(in srgb, var(--red) 28%, transparent); }
+.b-neutral { background: var(--bg); color: var(--ink-faint); border-color: var(--line); }
+
+/* status → hue mapping */
+.b-high, .b-waiting, .b-blocked { composes: none; background: var(--amber-soft); color: var(--amber); border-color: color-mix(in srgb, var(--amber) 28%, transparent); }
+.b-medium, .b-preparing, .b-in-progress, .b-draft, .b-not-started { background: var(--brand-soft); color: var(--brand); border-color: color-mix(in srgb, var(--brand) 28%, transparent); }
+.b-low, .b-ready, .b-completed, .b-published, .b-active, .b-done { background: var(--green-soft); color: var(--green); border-color: color-mix(in srgb, var(--green) 28%, transparent); }
+.b-open, .b-onboarding { background: var(--blue-soft); color: var(--blue); border-color: color-mix(in srgb, var(--blue) 28%, transparent); }
+.b-offboarding, .b-required, .b-collaborator, .b-contractor { background: var(--violet-soft); color: var(--violet); border-color: color-mix(in srgb, var(--violet) 28%, transparent); }
+.b-viewer, .b-scoped, .b-manager, .b-operator { background: var(--blue-soft); color: var(--blue); border-color: color-mix(in srgb, var(--blue) 28%, transparent); }
+.b-owner, .b-admin { background: var(--brand-soft); color: var(--brand); border-color: color-mix(in srgb, var(--brand) 28%, transparent); }
+.b-inactive, .b-cancelled { background: var(--bg); color: var(--ink-faint); border-color: var(--line); }
+.b-employee { background: var(--green-soft); color: var(--green); border-color: color-mix(in srgb, var(--green) 28%, transparent); }
+.b-intern { background: var(--amber-soft); color: var(--amber); border-color: color-mix(in srgb, var(--amber) 28%, transparent); }
 
 /* ---------------------------------- case table ---------------------------------- */
 
