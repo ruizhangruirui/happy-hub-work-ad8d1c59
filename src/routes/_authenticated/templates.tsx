@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { listTemplatesFn, saveTemplateFn } from "@/lib/workbench.functions";
-import type { TemplateDto } from "@/lib/types";
+import type { TemplateDto, WorkbenchData } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
 import { fmtDate } from "@/lib/format";
 import { opErrorMessage } from "@/lib/errors";
@@ -35,7 +35,7 @@ function TemplatesPage() {
   const categories = [...new Set(templates.map((x) => x.category))];
   const filtered = templates.filter((x) => !category || x.category === category);
   const current = templates.find((x) => x.id === selected) ?? filtered[0] ?? null;
-  const wb = wbData && !("error" in wbData) ? wbData : null;
+  const wb: WorkbenchData | null = wbData && !("error" in wbData) ? (wbData as WorkbenchData) : null;
   const canManage = wb ? ["Admin", "Operator"].includes(wb.currentUser.role) : false;
 
   return (
