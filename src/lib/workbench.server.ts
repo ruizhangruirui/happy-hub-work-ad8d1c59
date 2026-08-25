@@ -696,6 +696,74 @@ export async function listTemplates(
   };
 }
 
+export interface SaveTemplateInput {
+  id?: string | undefined;
+  name: string;
+  category: string;
+  status: "Draft" | "Published";
+  subject: string;
+  body: string;
+  variables: string[];
+}
+
+function cleanVariables(values: string[]) {
+  return [...new Set(values.map((v) => v.trim().replace(/^\{\{\s*/, "").replace(/\s*\}\}$/, "")).filter(Boolean))];
+}
+
+export async function saveTemplate(supabase: Db, userId: string, input: SaveTemplateInput) {
+  const identity = await loadIdentity(supabase, userId);
+  if (!identity || !["admin", "operator"].includes(identity.role)) {
+    return { error: "forbidden" as const };
+  }
+
+  const payload = {
+    name: input.name.trim(),
+    category: input.category.trim(),
+    status: input.status,
+    subject: input.subject.trim(),
+    body_html: input.body,
+    variables: cleanVariables(input.variables),
+    updated_at: new Date().toISOString(),
+  };
+
+  if (input.id) {
+    const { data: existing } = await supabase.from("email_templates").select("id,name").eq("id", input.id).maybeSingle();
+    if (!existing) return { error: "not_found" as const };
+    const { error } = await supabase.from("email_templates").update(payload).eq("id", input.id);
+    if (error) {
+      if (error.code === "42501") return { error: "forbidden" as const };
+      throw new Error(error.message);
+    }
+    await supabase.from("audit_logs").insert({
+      actor_id: userId,
+      entity_type: "email_template",
+      entity_id: input.id,
+      action: `Updated template ${payload.name}`,
+      field: "template",
+      previous_value: existing.name,
+      new_value: payload.name,
+    });
+    return { ok: true as const, id: input.id };
+  }
+
+  const { data, error } = await supabase
+    .from("email_templates")
+    .insert({ ...payload, owner_id: userId, language: "en", version: 1 })
+    .select("id")
+    .single();
+  if (error) {
+    if (error.code === "42501") return { error: "forbidden" as const };
+    throw new Error(error.message);
+  }
+  await supabase.from("audit_logs").insert({
+    actor_id: userId,
+    entity_type: "email_template",
+    entity_id: data.id,
+    action: `Created template ${payload.name}`,
+  });
+  return { ok: true as const, id: data.id as string };
+}
+
 export async function saveEmailDraft(
   supabase: Db,
   userId: string,

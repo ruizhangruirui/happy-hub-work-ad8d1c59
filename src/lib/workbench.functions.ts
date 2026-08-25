@@ -127,6 +127,23 @@ export const listTemplatesFn = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(({ context }) => wb.listTemplates(context.supabase as wb.Db, context.userId));
 
+export const saveTemplateFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) =>
+    z
+      .object({
+        id: z.string().uuid().optional(),
+        name: z.string().min(1).max(160),
+        category: z.string().min(1).max(80),
+        status: z.enum(["Draft", "Published"]),
+        subject: z.string().min(1).max(300),
+        body: z.string().min(1).max(20000),
+        variables: z.array(z.string().max(120)).max(50),
+      })
+      .parse(data),
+  )
+  .handler(({ data, context }) => wb.saveTemplate(context.supabase as wb.Db, context.userId, data));
+
 export const saveEmailDraftFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data) =>
