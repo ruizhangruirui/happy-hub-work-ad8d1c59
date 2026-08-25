@@ -96,6 +96,14 @@ export const getActiveRosterFn = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(({ context }) => wb.getActiveRoster(context.supabase as wb.Db, context.userId));
 
+export const createExternalRequestFn = createServerFn({ method:"POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data)=>z.object({
+    workflowItemId:z.string().uuid(),recipientEmail:z.string().email().max(320),recipientName:z.string().max(120).optional(),
+    recipientTeam:z.string().max(120).optional(),requestMessage:z.string().max(1000).optional(),dueDate:z.string().max(10).optional(),
+  }).parse(data))
+  .handler(({data,context})=>wb.createExternalRequest(context.supabase as wb.Db,context.userId,data));
+
 export const updateWorkflowItemFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data) => z.object({

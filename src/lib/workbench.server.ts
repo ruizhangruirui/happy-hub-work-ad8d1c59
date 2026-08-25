@@ -16,6 +16,7 @@ import type {
   WorkbenchData,
   WorkflowItemDto,
   RosterPersonDto,
+  ExternalRequestDto,
 } from "./types";
 
 export type Db = SupabaseClient<any, any, any>;
@@ -256,7 +257,7 @@ export async function getCaseDetail(
   if (!row) return { error: "not_found" };
   const r = row as any;
 
-  const [membersRes, profilesRes, checklistRes, historyRes, filesRes, workflowRes] = await Promise.all([
+  const [membersRes, profilesRes, checklistRes, historyRes, filesRes, workflowRes, externalRes] = await Promise.all([
     supabase.from("case_members").select("id,user_id,access_level").eq("case_id", caseId).is("revoked_at", null),
     supabase.from("profiles").select("id,name,status"),
     supabase.from("checklist_items").select("*").eq("case_id", caseId).order("sort_order"),
@@ -272,6 +273,7 @@ export async function getCaseDetail(
       .eq("case_id", caseId)
       .order("created_at", { ascending: false }),
     supabase.from("case_workflow_items").select("*").eq("case_id", caseId).order("sequence"),
+    supabase.from("external_collaboration_requests").select("*").eq("case_id", caseId).order("created_at", { ascending: false }),
   ]);
 
   const myMembership = ((membersRes.data ?? []) as any[]).find((m) => m.user_id === userId);
@@ -330,6 +332,11 @@ export async function getCaseDetail(
     targetDate:w.target_date,status:w.status,completedAt:w.completed_at,
     completedByName:w.completed_by ? (nameOf.get(w.completed_by) ?? null) : null,
   }));
+  const externalRequests: ExternalRequestDto[] = ((externalRes.data ?? []) as any[]).map((x) => ({
+    id:x.id,workflowItemId:x.workflow_item_id,recipientEmail:x.recipient_email,recipientName:x.recipient_name,
+    recipientTeam:x.recipient_team,status:x.status,responseNote:x.response_note,dueDate:x.due_date,
+    expiresAt:x.expires_at,createdAt:x.created_at,respondedAt:x.responded_at,
+  }));
 
   const assignableUsers = ((profilesRes.data ?? []) as any[])
     .filter((p) => p.status === "Active")
@@ -351,8 +358,26 @@ export async function getCaseDetail(
     history,
     files,
     workflow,
+    externalRequests,
     assignableUsers,
   };
+}
+
+export async function createExternalRequest(supabase: Db, userId: string, input: {
+  workflowItemId:string; recipientEmail:string; recipientName?:string|undefined; recipientTeam?:string|undefined; requestMessage?:string|undefined; dueDate?:string|undefined;
+}) {
+  const identity = await loadIdentity(supabase, userId);
+  if (!identity) return { error:"access_denied" as const };
+  const { data, error } = await supabase.rpc("create_external_collaboration_request", {
+    _workflow_item_id:input.workflowItemId,_recipient_email:input.recipientEmail,
+    _recipient_name:input.recipientName || null,_recipient_team:input.recipientTeam || null,
+    _request_message:input.requestMessage || null,_due_date:input.dueDate || null,
+  });
+  if (error) {
+    if (error.code === "42501") return { error:"forbidden" as const };
+    throw new Error(error.message);
+  }
+  return { ok:true as const,id:(data as any).id as string,token:(data as any).token as string };
 }
 
 /* ---------------------------------- mutations ---------------------------------- */

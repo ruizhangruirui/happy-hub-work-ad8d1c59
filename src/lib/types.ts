@@ -106,6 +106,20 @@ export interface WorkflowItemDto {
   completedByName: string | null;
 }
 
+export interface ExternalRequestDto {
+  id: string;
+  workflowItemId: string;
+  recipientEmail: string;
+  recipientName: string | null;
+  recipientTeam: string | null;
+  status: string;
+  responseNote: string | null;
+  dueDate: string | null;
+  expiresAt: string;
+  createdAt: string;
+  respondedAt: string | null;
+}
+
 export interface CaseDetailDto {
   case: CaseDto & {
     personEmail: string | null;
@@ -121,6 +135,7 @@ export interface CaseDetailDto {
   history: HistoryDto[];
   files: FileDto[];
   workflow: WorkflowItemDto[];
+  externalRequests: ExternalRequestDto[];
   assignableUsers: { id: string; name: string }[];
 }
 

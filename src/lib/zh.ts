@@ -67,6 +67,21 @@ Object.assign(zh, {
 });
 
 Object.assign(zh, {
+  "Request external update":"请求外部反馈","Recipient Email":"收件人邮箱","Recipient Name":"收件人姓名","Recipient Team":"收件团队",
+  "Message":"补充说明","Create & Open Outlook":"创建并打开 Outlook","Creating…":"正在创建……","Feedback link created and copied":"反馈链接已创建并复制",
+  "The recipient will receive a private feedback link and will not need a Team Workbench account.":"收件人将获得一个私密反馈链接，无需注册 Team Workbench。",
+  "Action required":"需要处理","Hello":"您好","Sent":"已发送","Acknowledged":"已收到","External task update":"外部任务反馈",
+  "Feedback link unavailable":"反馈链接不可用","This link is invalid or no longer available.":"此链接无效或已不可用。",
+  "Feedback link expired":"反馈链接已过期","Please contact the HR team for a new link.":"请联系 HR 团队获取新链接。",
+  "ACTION REQUESTED":"待处理事项","Requested for":"请求对象","External collaborator":"外部协作者","Current Status":"当前状态",
+  "Update progress":"更新进度","I have a problem":"遇到问题","Comment (optional)":"备注（可选）","Add a short update for the HR team":"给 HR 团队添加简短说明",
+  "Send update":"提交反馈","Saving…":"正在保存……","Progress updated. Thank you!":"进度已更新，谢谢！",
+  "We could not save your response. The link may have expired.":"无法保存反馈，该链接可能已过期。",
+  "Only this task is shown. No Team Workbench account is required.":"页面仅展示当前任务，无需 Team Workbench 账号。"
+  ,"Secure task feedback":"安全任务反馈","Verify your email":"验证您的邮箱","Enter the email address that received this request.":"请输入收到此请求的邮箱地址。","Continue":"继续"
+});
+
+Object.assign(zh, {
   "Active Roster":"在职人员","PEOPLE OPERATIONS":"人员运营","Confirmed employees active as of today":"截至今天已确认入职的在职人员",
   "Active People":"在职人数","Employees":"正式员工","Interns":"实习生","Search roster":"搜索姓名、工号、邮箱、职位……",
   "All Locations":"全部地点","people":"人","No active people found.":"未找到在职人员。",

@@ -13,6 +13,7 @@ import {
   toggleChecklistFn,
   updateWorkflowItemFn,
   setCaseConfirmationFn,
+  createExternalRequestFn,
 } from "@/lib/workbench.functions";
 import type { CaseDetailDto, WorkbenchData } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
@@ -144,11 +145,71 @@ function CaseDetailPage() {
   );
 }
 
-function WorkflowTab({detail,canEdit,refresh}:{detail:CaseDetailDto;canEdit:boolean;refresh:()=>void}){
-  const {t,lang}=useLang();const update=useServerFn(updateWorkflowItemFn);
-  const done=detail.workflow.filter(x=>x.status==="Completed"||x.status==="Not Required").length;
-  const setStatus=async(itemId:string,status:"Not Started"|"In Progress"|"Blocked"|"Completed"|"Not Required")=>{try{const res=await update({data:{itemId,status}});if("error" in res){toast.error(opErrorMessage(t,res.error));return}refresh()}catch{toast.error(t("Something went wrong. Please try again."))}};
-  return <div className="panel workflowpanel"><div className="panelhead"><div><b>{t("Onboarding workflow")}</b><p>{done} / {detail.workflow.length} {t("steps complete")}</p></div><Badge>{`${Math.round(done/Math.max(detail.workflow.length,1)*100)}%`}</Badge></div><div className="workflowline">{detail.workflow.map((item,index)=><div className={`workflowstep ${item.status.toLowerCase().replaceAll(" ","-")}`} key={item.id}><span className="workflowdot">{item.status==="Completed"?"✓":index+1}</span><div className="workflowbody"><div><b>{t(item.title)}</b><Badge>{item.status}</Badge></div>{item.description?<p>{t(item.description)}</p>:null}<small>{item.targetDate?`${t("Target")} ${fmtDate(item.targetDate,lang)}`:t("No target date")}{item.completedByName?` · ${t("Completed by")} ${item.completedByName}`:""}</small>{canEdit&&item.status!=="Not Required"?<select value={item.status} onChange={e=>setStatus(item.id,e.target.value as "Not Started"|"In Progress"|"Blocked"|"Completed")}><option>Not Started</option><option>In Progress</option><option>Blocked</option><option>Completed</option></select>:null}</div></div>)}</div></div>;
+function WorkflowTab({ detail, canEdit, refresh }: { detail: CaseDetailDto; canEdit: boolean; refresh: () => void }) {
+  const { t, lang } = useLang();
+  const update = useServerFn(updateWorkflowItemFn);
+  const [requestItem, setRequestItem] = useState<CaseDetailDto["workflow"][number] | null>(null);
+  const done = detail.workflow.filter((x) => x.status === "Completed" || x.status === "Not Required").length;
+  const setStatus = async (itemId: string, status: "Not Started" | "In Progress" | "Blocked" | "Completed" | "Not Required") => {
+    try {
+      const res = await update({ data: { itemId, status } });
+      if ("error" in res) { toast.error(opErrorMessage(t, res.error)); return; }
+      refresh();
+    } catch { toast.error(t("Something went wrong. Please try again.")); }
+  };
+  return <>
+    <div className="panel workflowpanel">
+      <div className="panelhead"><div><b>{t("Onboarding workflow")}</b><p>{done} / {detail.workflow.length} {t("steps complete")}</p></div><Badge>{`${Math.round(done / Math.max(detail.workflow.length, 1) * 100)}%`}</Badge></div>
+      <div className="workflowline">{detail.workflow.map((item, index) => {
+        const requests = detail.externalRequests.filter((x) => x.workflowItemId === item.id);
+        return <div className={`workflowstep ${item.status.toLowerCase().replaceAll(" ", "-")}`} key={item.id}>
+          <span className="workflowdot">{item.status === "Completed" ? "✓" : index + 1}</span>
+          <div className="workflowbody">
+            <div><b>{t(item.title)}</b><Badge>{item.status}</Badge></div>
+            {item.description ? <p>{t(item.description)}</p> : null}
+            <small>{item.targetDate ? `${t("Target")} ${fmtDate(item.targetDate, lang)}` : t("No target date")}{item.completedByName ? ` · ${t("Completed by")} ${item.completedByName}` : ""}</small>
+            {requests.map((x) => <div className="externalrequest" key={x.id}><Icon name="mail" /><span><b>{x.recipientTeam || x.recipientName || x.recipientEmail}</b><small>{x.recipientEmail}{x.respondedAt ? ` · ${fmtDateTime(x.respondedAt, lang)}` : ""}</small>{x.responseNote ? <em>{x.responseNote}</em> : null}</span><Badge>{x.status}</Badge></div>)}
+            {canEdit && item.status !== "Not Required" ? <div className="workflowactions"><select value={item.status} onChange={(e) => setStatus(item.id, e.target.value as "Not Started" | "In Progress" | "Blocked" | "Completed")}><option>Not Started</option><option>In Progress</option><option>Blocked</option><option>Completed</option></select><button className="secondary" onClick={() => setRequestItem(item)}><Icon name="send" /> {t("Request external update")}</button></div> : null}
+          </div>
+        </div>;
+      })}</div>
+    </div>
+    {requestItem ? <ExternalRequestModal item={requestItem} personName={detail.case.name} close={() => setRequestItem(null)} refresh={refresh} /> : null}
+  </>;
+}
+
+function ExternalRequestModal({ item, personName, close, refresh }: { item: CaseDetailDto["workflow"][number]; personName: string; close: () => void; refresh: () => void }) {
+  const { t, lang } = useLang();
+  const createRequest = useServerFn(createExternalRequestFn);
+  const [form, setForm] = useState({ recipientEmail: "", recipientName: "", recipientTeam: "", dueDate: item.targetDate ?? "", requestMessage: "" });
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    if (!form.recipientEmail) return;
+    setBusy(true);
+    try {
+      const res = await createRequest({ data: { workflowItemId: item.id, ...form } });
+      if ("error" in res) { toast.error(opErrorMessage(t, res.error)); return; }
+      const link = `${window.location.origin}/respond/${res.token}`;
+      const subject = `${t("Action required")}: ${t(item.title)} · ${personName}`;
+      const greeting = form.recipientName ? `${t("Hello")} ${form.recipientName},` : `${t("Hello")},`;
+      const body = lang === "zh"
+        ? `${greeting}\n\n请协助处理以下事项：${t(item.title)}（${personName}）。${form.requestMessage ? `\n\n${form.requestMessage}` : ""}${form.dueDate ? `\n\n截止日期：${fmtDate(form.dueDate, lang)}` : ""}\n\n无需登录，请通过以下安全链接反馈进度：\n${link}\n\n谢谢。`
+        : `${greeting}\n\nPlease help with the following task: ${item.title} for ${personName}.${form.requestMessage ? `\n\n${form.requestMessage}` : ""}${form.dueDate ? `\n\nDue: ${fmtDate(form.dueDate, lang)}` : ""}\n\nNo account is required. Please update the progress using this secure link:\n${link}\n\nThank you.`;
+      await navigator.clipboard?.writeText(link).catch(() => undefined);
+      refresh(); close();
+      window.location.href = `mailto:${encodeURIComponent(form.recipientEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      toast.success(t("Feedback link created and copied"));
+    } catch { toast.error(t("Something went wrong. Please try again.")); }
+    finally { setBusy(false); }
+  };
+  return <Modal title={t("Request external update")} close={close}>
+    <div className="externalform"><div className="requestsummary"><Icon name="send" /><div><b>{t(item.title)}</b><span>{personName}</span></div></div>
+      <div className="userform two"><label><span>{t("Recipient Email")}</span><input type="email" required value={form.recipientEmail} onChange={e=>setForm({...form,recipientEmail:e.target.value})}/></label><label><span>{t("Recipient Name")}</span><input value={form.recipientName} onChange={e=>setForm({...form,recipientName:e.target.value})}/></label><label><span>{t("Recipient Team")}</span><input placeholder="IT / Administration / Reception" value={form.recipientTeam} onChange={e=>setForm({...form,recipientTeam:e.target.value})}/></label><label><span>{t("Due Date")}</span><input type="date" value={form.dueDate} onChange={e=>setForm({...form,dueDate:e.target.value})}/></label></div>
+      <label className="sharefield"><span>{t("Message")}</span><textarea rows={4} maxLength={1000} value={form.requestMessage} onChange={e=>setForm({...form,requestMessage:e.target.value})}/></label>
+      <p className="securityhint"><Icon name="lock" /> {t("The recipient will receive a private feedback link and will not need a Team Workbench account.")}</p>
+      <div className="modalactions"><button className="secondary" onClick={close}>{t("Cancel")}</button><button className="primary" disabled={busy || !form.recipientEmail} onClick={submit}><Icon name="send" /> {busy?t("Creating…"):t("Create & Open Outlook")}</button></div>
+    </div>
+  </Modal>;
 }
 
 function Field({ label, value }: { label: string; value: string | null | undefined }) {
