@@ -59,6 +59,13 @@ export type Database = {
             foreignKeyName: "audit_logs_case_id_fkey"
             columns: ["case_id"]
             isOneToOne: false
+            referencedRelation: "active_employee_roster"
+            referencedColumns: ["case_id"]
+          },
+          {
+            foreignKeyName: "audit_logs_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
             referencedRelation: "cases"
             referencedColumns: ["id"]
           },
@@ -100,6 +107,13 @@ export type Database = {
             foreignKeyName: "case_files_case_id_fkey"
             columns: ["case_id"]
             isOneToOne: false
+            referencedRelation: "active_employee_roster"
+            referencedColumns: ["case_id"]
+          },
+          {
+            foreignKeyName: "case_files_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
             referencedRelation: "cases"
             referencedColumns: ["id"]
           },
@@ -137,6 +151,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "case_members_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "active_employee_roster"
+            referencedColumns: ["case_id"]
+          },
           {
             foreignKeyName: "case_members_case_id_fkey"
             columns: ["case_id"]
@@ -190,6 +211,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "case_workflow_items_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "active_employee_roster"
+            referencedColumns: ["case_id"]
+          },
           {
             foreignKeyName: "case_workflow_items_case_id_fkey"
             columns: ["case_id"]
@@ -271,6 +299,13 @@ export type Database = {
             foreignKeyName: "cases_person_id_fkey"
             columns: ["person_id"]
             isOneToOne: false
+            referencedRelation: "active_employee_roster"
+            referencedColumns: ["person_id"]
+          },
+          {
+            foreignKeyName: "cases_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
             referencedRelation: "persons"
             referencedColumns: ["id"]
           },
@@ -323,6 +358,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "checklist_items_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "active_employee_roster"
+            referencedColumns: ["case_id"]
+          },
           {
             foreignKeyName: "checklist_items_case_id_fkey"
             columns: ["case_id"]
@@ -469,6 +511,13 @@ export type Database = {
             foreignKeyName: "persons_manager_id_fkey"
             columns: ["manager_id"]
             isOneToOne: false
+            referencedRelation: "active_employee_roster"
+            referencedColumns: ["person_id"]
+          },
+          {
+            foreignKeyName: "persons_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
             referencedRelation: "persons"
             referencedColumns: ["id"]
           },
@@ -555,6 +604,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "tasks_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "active_employee_roster"
+            referencedColumns: ["case_id"]
+          },
           {
             foreignKeyName: "tasks_case_id_fkey"
             columns: ["case_id"]
@@ -668,11 +724,47 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      active_employee_roster: {
+        Row: {
+          case_id: string | null
+          email: string | null
+          employee_id: string | null
+          employment_type: string | null
+          full_name: string | null
+          location: string | null
+          person_id: string | null
+          phone: string | null
+          role: string | null
+          start_date: string | null
+          supervisor_name: string | null
+          team_name: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       case_access: {
         Args: { _case_id: string; _user_id: string }
+        Returns: string
+      }
+      create_workbench_case: {
+        Args: {
+          _case_type: string
+          _email: string
+          _employment_type: string
+          _end_date: string
+          _first_name: string
+          _last_name: string
+          _location: string
+          _notes: string
+          _priority: string
+          _role: string
+          _start_date: string
+          _supervisor_email: string
+          _supervisor_name: string
+          _team_id: string
+          _visa_required?: boolean
+        }
         Returns: string
       }
       has_role: {
