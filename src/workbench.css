@@ -1198,6 +1198,10 @@ button { cursor: pointer; }
   gap: 10px;
 }
 
+.modal:has(.templateform) {
+  max-width: 760px;
+}
+
 .versionrow {
   display: flex;
   align-items: center;
