@@ -114,4 +114,5 @@ Object.assign(zh, {
   "This email is already registered.":"该邮箱已注册。","You don't have permission to do that.":"您没有执行此操作的权限。",
   "This item could not be found.":"未找到该条目。","Upload failed. Please try again.":"上传失败，请重试。",
   "Search":"搜索","Search results":"搜索结果","No results found.":"未找到匹配结果。","Cases":"事项","Tasks":"任务","People":"人员",
+  "Template Name":"模板名称","Body":"正文","Saving…":"保存中…","Duplicate":"复制","New Template":"新建模板","Edit Template":"编辑模板"
 });
