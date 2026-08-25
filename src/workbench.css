@@ -244,6 +244,20 @@ button { cursor: pointer; }
 .feedbackverify label { text-align:left; }
 .feedbackverify input { width:100%; border:1px solid var(--line); border-radius:9px; padding:10px 11px; font-size:13px; }
 
+.caseprogress { display:flex; align-items:center; gap:7px; min-width:170px; padding:6px 9px; border:1px solid var(--line); border-radius:9px; background:#fff; }
+.caseprogress > b { color:var(--brand); font-size:13px; }
+.caseprogress > i { position:relative; width:48px; height:5px; overflow:hidden; border-radius:9px; background:#e8ebf2; }
+.caseprogress > i em { position:absolute; inset:0 auto 0 0; border-radius:inherit; background:var(--brand); }
+.caseprogress > small { color:var(--ink-faint); font-size:10px; white-space:nowrap; }
+.casetasks { display:flex; flex-direction:column; }
+.casetask { display:flex; align-items:center; gap:12px; padding:14px 16px; border-top:1px solid var(--line); }
+.casetask.done .taskmain b { text-decoration:line-through; opacity:.58; }
+.casetask .taskmain { flex:1; }
+.emailtaskbutton { white-space:nowrap; animation:softpulse 2.2s infinite; }
+.successbutton { display:inline-flex; align-items:center; gap:6px; border:1px solid #a9dcc0; border-radius:8px; padding:8px 11px; background:#eaf8f0; color:#197145; font-size:12px; font-weight:700; cursor:pointer; }
+.successbutton:disabled { cursor:default; opacity:.7; }
+@keyframes softpulse { 0%,100%{box-shadow:0 0 0 0 rgba(74,92,212,.1)} 50%{box-shadow:0 0 0 5px rgba(74,92,212,.07)} }
+
 @media (max-width: 900px) { .rosterstats { grid-template-columns:repeat(2,1fr); } .rosterfilters { flex-wrap:wrap; } .rostersearch { max-width:none; flex-basis:100%; } }
 @media (max-width: 620px) { .feedbackcard { padding:22px 18px; } .feedbackfacts { grid-template-columns:1fr; } .workflowactions { align-items:stretch; flex-direction:column; } }
 

@@ -11,6 +11,7 @@ import {
   removeMemberFn,
   shareCaseFn,
   toggleChecklistFn,
+  toggleTaskFn,
   updateWorkflowItemFn,
   setCaseConfirmationFn,
   createExternalRequestFn,
@@ -31,7 +32,7 @@ export const Route = createFileRoute("/_authenticated/cases/$caseId")({
   component: CaseDetailPage,
 });
 
-const TABS = ["Overview", "Workflow", "Checklist", "Communication", "Files", "History"];
+const TABS = ["Overview", "Tasks", "Workflow", "Checklist", "Communication", "Files", "History"];
 
 function CaseDetailPage() {
   const { caseId } = Route.useParams();
@@ -66,6 +67,8 @@ function CaseDetailPage() {
   const canEdit = isOwner || c.accessLevel === "Collaborator";
   const wb: WorkbenchData | null = wbData && !("error" in wbData) ? wbData : null;
   const refresh = () => qc.invalidateQueries({ queryKey: ["case", caseId] });
+  const completedTasks = detail.tasks.filter((x) => x.status.toLowerCase() === "completed").length;
+  const taskProgress = detail.tasks.length ? Math.round(completedTasks / detail.tasks.length * 100) : 0;
   const changeConfirmation = async (confirmed: boolean) => {
     try {
       const res = await setConfirmation({ data: { caseId, confirmed } });
@@ -108,6 +111,7 @@ function CaseDetailPage() {
           <Badge>{c.status}</Badge>
           <Badge>{c.priority}</Badge>
           <Badge>{c.accessLevel}</Badge>
+          {c.caseType === "Onboarding" ? <span className="caseprogress"><b>{taskProgress}%</b><i><em style={{width:`${taskProgress}%`}} /></i><small>{completedTasks}/{detail.tasks.length} {t("tasks completed")}</small></span> : null}
           {canEdit ? (
             <button className={c.status === "Confirmed" ? "secondary" : "primary"} onClick={() => changeConfirmation(c.status !== "Confirmed")}>
               <Icon name={c.status === "Confirmed" ? "history" : "check"} /> {t(c.status === "Confirmed" ? "Reopen" : c.caseType === "Onboarding" ? "Confirm Onboarding" : "Confirm Offboarding")}
@@ -130,6 +134,7 @@ function CaseDetailPage() {
       </div>
 
       {tab === "Overview" ? <OverviewTab detail={detail} /> : null}
+      {tab === "Tasks" ? <TasksTab detail={detail} canEdit={canEdit} refresh={refresh} /> : null}
       {tab === "Workflow" ? <WorkflowTab detail={detail} canEdit={canEdit} refresh={refresh} /> : null}
       {tab === "Checklist" ? (
         <ChecklistTab detail={detail} canEdit={canEdit} refresh={refresh} caseId={caseId} />
@@ -143,6 +148,13 @@ function CaseDetailPage() {
       ) : null}
     </div>
   );
+}
+
+function TasksTab({detail,canEdit,refresh}:{detail:CaseDetailDto;canEdit:boolean;refresh:()=>void}){
+  const {t,lang}=useLang();const navigate=useNavigate();const toggle=useServerFn(toggleTaskFn);const qc=useQueryClient();
+  const update=async(taskId:string,complete:boolean)=>{try{const res=await toggle({data:{taskId,complete}});if("error" in res){toast.error(opErrorMessage(t,res.error));return}await Promise.all([qc.invalidateQueries({queryKey:["workbench"]}),refresh()])}catch{toast.error(t("Something went wrong. Please try again."))}};
+  if(!detail.tasks.length)return <Empty icon="check" title={t("No tasks yet.")}/>;
+  return <div className="panel"><div className="panelhead"><div><b>{t("Case Tasks")}</b><p>{t("Tasks are generated automatically from the onboarding case.")}</p></div><Badge>{`${detail.tasks.filter(x=>x.status.toLowerCase()==="completed").length}/${detail.tasks.length}`}</Badge></div><div className="casetasks">{detail.tasks.map(task=>{const done=task.status.toLowerCase()==="completed";const welcome=task.defaultTaskKey==="send_welcome_email"||task.title.toLowerCase().includes("welcome email");return <div className={`casetask ${done?"done":""}`} key={task.id}><button className={`taskcheck${done?" done":""}`} disabled={!canEdit} onClick={()=>update(task.id,!done)}><Icon name="check"/></button><div className="taskmain"><b>{t(task.title)}</b><span>{task.assigneeRole?`${t("Assigned role")}: ${t(task.assigneeRole)}`:""}{task.due?` · ${t("due")} ${fmtDate(task.due,lang)}`:""}</span></div><Badge>{task.status}</Badge>{welcome&&!done?<button className="primary emailtaskbutton" onClick={()=>navigate({to:"/email-center",search:{caseId:detail.case.id,taskId:task.id}})}><Icon name="mail"/>{t("Go send email")}</button>:null}</div>})}</div></div>;
 }
 
 function WorkflowTab({ detail, canEdit, refresh }: { detail: CaseDetailDto; canEdit: boolean; refresh: () => void }) {
@@ -384,7 +396,7 @@ function CommunicationTab({ detail, caseId }: { detail: CaseDetailDto; caseId: s
     <div className="panel">
       <div className="panelhead">
         <b>{t("Communication")}</b>
-        <button className="primary" onClick={() => navigate({ to: "/email", search: { caseId } })}>
+        <button className="primary" onClick={() => navigate({ to: "/email", search: { caseId, taskId: "" } })}>
           <Icon name="mail" /> {t("Compose Email")}
         </button>
       </div>
@@ -393,7 +405,7 @@ function CommunicationTab({ detail, caseId }: { detail: CaseDetailDto; caseId: s
           icon="mail"
           title={t("No communications yet.")}
           action={t("Send the first email")}
-          onAction={() => navigate({ to: "/email", search: { caseId } })}
+          onAction={() => navigate({ to: "/email", search: { caseId, taskId: "" } })}
         />
       ) : (
         <div className="communications">

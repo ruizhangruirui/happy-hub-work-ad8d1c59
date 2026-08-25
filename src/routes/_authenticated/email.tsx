@@ -1,9 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { createFileRoute, useSearch } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { getCaseDetailFn, listTemplatesFn, saveEmailDraftFn } from "@/lib/workbench.functions";
+import { completeEmailTaskFn, getCaseDetailFn, listTemplatesFn, saveEmailDraftFn } from "@/lib/workbench.functions";
 import { useWorkbench } from "@/components/workbench/CaseList";
 import type { CaseDetailDto, TemplateDto } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
@@ -14,6 +14,7 @@ import { Empty, Icon, Loading } from "@/components/workbench/ui";
 export const Route = createFileRoute("/_authenticated/email")({
   validateSearch: (s: Record<string, unknown>) => ({
     caseId: typeof s["caseId"] === "string" ? s["caseId"] : "",
+    taskId: typeof s["taskId"] === "string" ? s["taskId"] : "",
   }),
   head: () => ({
     meta: [
@@ -28,19 +29,22 @@ function fill(text: string | null | undefined, vars: Record<string, string>): st
   return (text ?? "").replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key: string) => vars[key] ?? `{{${key}}}`);
 }
 
-function EmailPage() {
+export function EmailPage() {
   const { t, lang } = useLang();
-  const search = Route.useSearch();
+  const search = useSearch({ strict:false }) as {caseId?:string;taskId?:string};
+  const qc=useQueryClient();
   const fetchTemplates = useServerFn(listTemplatesFn);
   const fetchDetail = useServerFn(getCaseDetailFn);
   const callSaveDraft = useServerFn(saveEmailDraftFn);
+  const callCompleteTask=useServerFn(completeEmailTaskFn);
   const { data: wbData, isLoading: wbLoading } = useWorkbench();
   const { data: tplData, isLoading: tplLoading } = useQuery({
     queryKey: ["templates"],
     queryFn: () => fetchTemplates(),
   });
 
-  const [caseId, setCaseId] = useState(search.caseId);
+  const [caseId, setCaseId] = useState(search.caseId ?? "");
+  const taskId=search.taskId ?? "";
   const [templateId, setTemplateId] = useState("");
   const [extra, setExtra] = useState("");
   const [saved, setSaved] = useState(false);
@@ -51,9 +55,18 @@ function EmailPage() {
     enabled: Boolean(caseId),
   });
 
-  const templates: TemplateDto[] = tplData && !("error" in tplData) ? tplData.templates : [];
+  const allTemplates: TemplateDto[] = tplData && !("error" in tplData) ? tplData.templates : [];
   const detail: CaseDetailDto | null = detailData && !("error" in detailData) ? detailData : null;
+  const caseType=detail?.case.caseType.toLowerCase() ?? "";
+  const templates=allTemplates.filter(x=>!caseType||x.applicableCaseTypes.includes(caseType));
   const template = templates.find((x) => x.id === templateId) ?? null;
+  const linkedTask=detail?.tasks.find(x=>x.id===taskId)??null;
+
+  useEffect(()=>{
+    if(!taskId||templateId||!templates.length)return;
+    const welcome=templates.find(x=>x.name.toLowerCase().includes("welcome")||x.subject.toLowerCase().includes("welcome"));
+    setTemplateId((welcome??templates[0])?.id??"");
+  },[taskId,templateId,templates]);
 
   const vars = useMemo(() => {
     if (!detail) return {} as Record<string, string>;
@@ -62,7 +75,11 @@ function EmailPage() {
     return {
       "person.first_name": firstName,
       "person.full_name": c.name,
+      "candidate_name": c.name,
+      "candidate_first_name": firstName,
+      "employee_name": c.name,
       "case.start_date": fmtDate(c.startDate, lang),
+      "start_date": fmtDate(c.startDate, lang),
       "case.end_date": fmtDate(c.endDate, lang),
       "manager.name": c.managerName ?? "",
       "person.team": c.team,
@@ -98,6 +115,11 @@ function EmailPage() {
     }
   };
 
+  const markSent=async()=>{
+    if(!ready||!linkedTask)return;
+    try{const res=await callCompleteTask({data:{taskId:linkedTask.id,caseId,templateId:template.id,subject,body,recipient}});if("error" in res){toast.error(opErrorMessage(t,res.error));return}await Promise.all([qc.invalidateQueries({queryKey:["case",caseId]}),qc.invalidateQueries({queryKey:["workbench"]})]);toast.success(t("Email marked as sent and task completed"));}catch{toast.error(t("Something went wrong. Please try again."))}
+  };
+
   const openOutlook = () => {
     if (!ready) return;
     const url = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
@@ -110,6 +132,7 @@ function EmailPage() {
         <div>
           <p className="eyebrow">{t("COMMUNICATION")}</p>
           <h1>{t("Email Center")}</h1>
+          {linkedTask?<p>{t("Linked task")}: <b>{t(linkedTask.title)}</b></p>:null}
         </div>
       </div>
 
@@ -201,6 +224,7 @@ function EmailPage() {
               <button className="primary" disabled={!ready || !recipient} onClick={openOutlook}>
                 <Icon name="send" /> {t("Open in Outlook")}
               </button>
+              {linkedTask?<button className="successbutton" disabled={!ready||linkedTask.status.toLowerCase()==="completed"} onClick={markSent}><Icon name="check"/>{linkedTask.status.toLowerCase()==="completed"?t("Email Sent"):t("Mark as Sent")}</button>:null}
             </div>
           </div>
           {ready ? (

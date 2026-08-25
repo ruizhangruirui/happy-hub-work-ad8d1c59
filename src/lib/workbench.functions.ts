@@ -167,6 +167,14 @@ export const saveEmailDraftFn = createServerFn({ method: "POST" })
   )
   .handler(({ data, context }) => wb.saveEmailDraft(context.supabase as wb.Db, context.userId, data));
 
+export const completeEmailTaskFn = createServerFn({ method:"POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data)=>z.object({
+    taskId:z.string().uuid(),caseId:z.string().uuid(),templateId:z.string().uuid(),
+    subject:z.string().min(1).max(300),body:z.string().max(20000),recipient:z.string().max(320),
+  }).parse(data))
+  .handler(({data,context})=>wb.completeEmailTask(context.supabase as wb.Db,context.userId,data));
+
 export const assignChecklistOwnerFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data) =>

@@ -33,6 +33,8 @@ export interface TaskDto {
   ownerName: string;
   checklistItemId: string | null;
   completedAt: string | null;
+  assigneeRole: string | null;
+  defaultTaskKey: string | null;
 }
 
 export interface CaseDto {
@@ -135,6 +137,7 @@ export interface CaseDetailDto {
   history: HistoryDto[];
   files: FileDto[];
   workflow: WorkflowItemDto[];
+  tasks: TaskDto[];
   externalRequests: ExternalRequestDto[];
   assignableUsers: { id: string; name: string }[];
 }
@@ -148,6 +151,7 @@ export interface TemplateDto {
   subject: string;
   body: string;
   variables: string[];
+  applicableCaseTypes: string[];
 }
 
 export interface RosterPersonDto {

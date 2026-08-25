@@ -211,6 +211,8 @@ export async function getWorkbenchData(
     ownerName: t.owner_id ? (nameOf.get(t.owner_id) ?? "") : "",
     checklistItemId: t.checklist_item_id,
     completedAt: t.completed_at,
+    assigneeRole: t.assignee_role ?? null,
+    defaultTaskKey: t.default_task_key ?? null,
   }));
 
   const currentUser: CurrentUser = {
@@ -257,7 +259,7 @@ export async function getCaseDetail(
   if (!row) return { error: "not_found" };
   const r = row as any;
 
-  const [membersRes, profilesRes, checklistRes, historyRes, filesRes, workflowRes, externalRes] = await Promise.all([
+  const [membersRes, profilesRes, checklistRes, historyRes, filesRes, workflowRes, externalRes, tasksRes] = await Promise.all([
     supabase.from("case_members").select("id,user_id,access_level").eq("case_id", caseId).is("revoked_at", null),
     supabase.from("profiles").select("id,name,status"),
     supabase.from("checklist_items").select("*").eq("case_id", caseId).order("sort_order"),
@@ -274,6 +276,7 @@ export async function getCaseDetail(
       .order("created_at", { ascending: false }),
     supabase.from("case_workflow_items").select("*").eq("case_id", caseId).order("sequence"),
     supabase.from("external_collaboration_requests").select("*").eq("case_id", caseId).order("created_at", { ascending: false }),
+    supabase.from("tasks").select("*").eq("case_id", caseId).order("due_date", { ascending: true, nullsFirst: false }),
   ]);
 
   const myMembership = ((membersRes.data ?? []) as any[]).find((m) => m.user_id === userId);
@@ -337,6 +340,12 @@ export async function getCaseDetail(
     recipientTeam:x.recipient_team,status:x.status,responseNote:x.response_note,dueDate:x.due_date,
     expiresAt:x.expires_at,createdAt:x.created_at,respondedAt:x.responded_at,
   }));
+  const tasks: TaskDto[] = ((tasksRes.data ?? []) as any[]).map((t) => ({
+    id:t.id,title:t.title,person:person.full_name ?? "",caseId:t.case_id,caseType:r.case_type,due:t.due_date,
+    priority:t.priority,status:t.status,email:t.task_type === "Email",ownerId:t.owner_id,
+    ownerName:t.owner_id ? (nameOf.get(t.owner_id) ?? "") : "",checklistItemId:t.checklist_item_id,
+    completedAt:t.completed_at,assigneeRole:t.assignee_role ?? null,defaultTaskKey:t.default_task_key ?? null,
+  }));
 
   const assignableUsers = ((profilesRes.data ?? []) as any[])
     .filter((p) => p.status === "Active")
@@ -358,6 +367,7 @@ export async function getCaseDetail(
     history,
     files,
     workflow,
+    tasks,
     externalRequests,
     assignableUsers,
   };
@@ -717,6 +727,7 @@ export async function listTemplates(
       variables: ((t.variables ?? []) as any[])
         .map((v) => (typeof v === "string" ? v : (v?.key ?? "")))
         .filter(Boolean),
+      applicableCaseTypes: (t.applicable_case_types ?? ["onboarding", "offboarding"]) as string[],
     })),
   };
 }
@@ -748,6 +759,11 @@ export async function saveTemplate(supabase: Db, userId: string, input: SaveTemp
     subject: input.subject.trim(),
     body_html: input.body,
     variables: cleanVariables(input.variables),
+    applicable_case_types: input.category.trim().toLowerCase() === "onboarding"
+      ? ["onboarding"]
+      : input.category.trim().toLowerCase() === "offboarding"
+        ? ["offboarding"]
+        : ["onboarding", "offboarding"],
     updated_at: new Date().toISOString(),
   };
 
@@ -807,6 +823,16 @@ export async function saveEmailDraft(
     throw new Error(error.message);
   }
   return { ok: true as const };
+}
+
+export async function completeEmailTask(supabase:Db,userId:string,input:{taskId:string;caseId:string;templateId:string;subject:string;body:string;recipient:string}){
+  const identity=await loadIdentity(supabase,userId);if(!identity)return {error:"access_denied" as const};
+  const {data,error}=await supabase.rpc("complete_email_task",{
+    _task_id:input.taskId,_case_id:input.caseId,_template_id:input.templateId,
+    _subject:input.subject,_body:input.body,_recipient:input.recipient,
+  });
+  if(error){if(error.code==="42501")return {error:"forbidden" as const};throw new Error(error.message)}
+  if(data===false)return {error:"forbidden" as const};return {ok:true as const};
 }
 
 export async function assignChecklistOwner(

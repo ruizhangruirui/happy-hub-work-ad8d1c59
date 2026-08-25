@@ -67,6 +67,13 @@ Object.assign(zh, {
 });
 
 Object.assign(zh, {
+  "Tasks":"任务","Case Tasks":"事项任务","tasks completed":"项任务已完成","Tasks are generated automatically from the onboarding case.":"任务由入职事项自动生成。",
+  "No tasks yet.":"暂无任务。","Prepare IT equipment":"准备 IT 设备","Send Welcome Email":"发送 Welcome Email","Schedule onboarding meeting":"安排入职会议",
+  "Assigned role":"负责角色","it_support":"IT 支持","hr":"HR","manager":"主管","Go send email":"去发送邮件","Linked task":"关联任务",
+  "Mark as Sent":"标记为已发送","Email Sent":"邮件已发送","Email marked as sent and task completed":"邮件已标记发送，关联任务已完成"
+});
+
+Object.assign(zh, {
   "Request external update":"请求外部反馈","Recipient Email":"收件人邮箱","Recipient Name":"收件人姓名","Recipient Team":"收件团队",
   "Message":"补充说明","Create & Open Outlook":"创建并打开 Outlook","Creating…":"正在创建……","Feedback link created and copied":"反馈链接已创建并复制",
   "The recipient will receive a private feedback link and will not need a Team Workbench account.":"收件人将获得一个私密反馈链接，无需注册 Team Workbench。",
