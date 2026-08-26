@@ -1,0 +1,9 @@
+import {createFileRoute,useNavigate} from "@tanstack/react-router";
+import {useQuery} from "@tanstack/react-query";
+import {useServerFn} from "@tanstack/react-start";
+import {getPersonDetailFn} from "@/lib/workbench.functions";
+import {useLang} from "@/lib/i18n";
+import {fmtDate} from "@/lib/format";
+import {Badge,Empty,Loading} from "@/components/workbench/ui";
+export const Route=createFileRoute("/_authenticated/people/$personId")({component:PersonPage});
+function PersonPage(){const {personId}=Route.useParams();const {t,lang}=useLang();const nav=useNavigate();const call=useServerFn(getPersonDetailFn);const {data,isLoading}=useQuery({queryKey:["person",personId],queryFn:()=>call({data:{personId}})});if(isLoading)return <Loading/>;if(!data||"error" in data)return <Empty icon="alert" title={t("Person not found")}/>;const active=data.employments.find(e=>["active","ending"].includes(e.status));return <div><div className="pagehead"><div><p className="eyebrow">{t("PERSON PROFILE")}</p><h1>{data.person.displayName}</h1><p>{data.person.email??"—"} · {data.person.employeeId??"—"}</p></div>{active?<button className="primary" onClick={()=>nav({to:"/offboarding",search:{q:"",new:"1",personId,employmentId:active.id}})}>{t("Start Offboarding")}</button>:null}</div><section className="panel"><div className="panelhead"><b>{t("Employment History")}</b></div><div className="timeline">{data.employments.map(e=><div className="timelineitem" key={e.id}><Badge>{e.status}</Badge><div><b>{e.employmentType} · {e.role??"—"}</b><p>{e.team} · {fmtDate(e.startDate,lang)} – {fmtDate(e.endDate,lang)}</p></div></div>)}</div></section><section className="panel"><div className="panelhead"><b>{t("Lifecycle Cases")}</b></div>{data.cases.map(c=><button className="templatecard" key={c.id} onClick={()=>nav({to:"/cases/$caseId",params:{caseId:c.id}})}><div><b>{t(c.caseType)} · {c.status}</b><span>{fmtDate(c.effectiveDate,lang)}</span></div></button>)}</section></div>}

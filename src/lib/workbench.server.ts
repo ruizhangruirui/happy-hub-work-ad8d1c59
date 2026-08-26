@@ -17,6 +17,8 @@ import type {
   WorkflowItemDto,
   RosterPersonDto,
   ExternalRequestDto,
+  PeopleRowDto,
+  PersonDetailDto,
 } from "./types";
 
 export type Db = SupabaseClient<any, any, any>;
@@ -115,6 +117,8 @@ function toCaseDto(row: any, accessLevel: AccessLevel, nameOf: Map<string, strin
     team: person.teams?.name ?? "—",
     startDate: row.start_date,
     endDate: row.end_date,
+    effectiveDate: row.effective_date ?? (String(row.case_type).toLowerCase() === "offboarding" ? row.end_date : row.start_date),
+    employmentId: row.employment_id ?? null,
     owner: nameOf.get(row.owner_id) ?? "",
     ownerId: row.owner_id,
     status: row.status,
@@ -355,6 +359,8 @@ export async function getCaseDetail(
     case: {
       ...toCaseDto(r, access, nameOf),
       personEmail: person.email ?? null,
+      givenName: person.given_name ?? null,
+      preferredName: person.preferred_name ?? null,
       employeeId: person.employee_id ?? null,
       phone: person.phone ?? null,
       managerName: person.manager?.full_name ?? null,
@@ -568,6 +574,56 @@ export async function createCase(supabase: Db, userId: string, input: CreateCase
   return { ok: true as const, caseId: caseId as string };
 }
 
+export async function createOnboardingCase(supabase: Db, userId: string, input: CreateCaseInput & { personId?: string | undefined; preferredName?: string | undefined }) {
+  const { data, error } = await supabase.rpc("create_onboarding_case_v2", {
+    _existing_person_id: input.personId || null, _given_name: input.firstName, _family_name: input.lastName,
+    _preferred_name: input.preferredName || null, _email: input.email || null, _team_id: input.teamId || null,
+    _employment_type: input.employmentType, _effective_date: input.startDate, _role_title: input.role || null,
+    _location: input.location || null, _supervisor_name: input.supervisorName, _supervisor_email: input.supervisorEmail || null,
+    _workload: null, _priority: input.priority, _notes: input.notes || null, _visa_required: input.visaRequired ?? false,
+  });
+  if (error) { if (error.code === "42501") return { error: "forbidden" as const }; throw new Error(error.message); }
+  return { ok: true as const, caseId: (data as any).caseId as string };
+}
+
+export async function createOffboardingCase(supabase: Db, userId: string, input: { personId:string; employmentId:string; lastWorkingDay:string; leavingType?:string | undefined; leavingReason?:string | undefined; priority:string; notes?:string | undefined }) {
+  const { data, error } = await supabase.rpc("create_offboarding_case_v2", {
+    _person_id: input.personId, _employment_id: input.employmentId, _effective_date: input.lastWorkingDay,
+    _leaving_type: input.leavingType || null, _leaving_reason: input.leavingReason || null,
+    _priority: input.priority, _notes: input.notes || null,
+  });
+  if (error) { if (error.code === "42501") return { error: "forbidden" as const }; throw new Error(error.message); }
+  return { ok: true as const, caseId: (data as any).caseId as string };
+}
+
+function peopleRow(row:any): PeopleRowDto {
+  const employments = [...(row.employments ?? [])].sort((a:any,b:any)=>String(b.start_date ?? "").localeCompare(String(a.start_date ?? "")));
+  const e = employments.find((x:any)=>["active","ending","planned"].includes(x.status)) ?? employments[0];
+  return { personId:row.id, displayName:row.display_name || row.preferred_name || row.full_name,
+    givenName:row.given_name, familyName:row.family_name, preferredName:row.preferred_name, email:row.email,
+    employmentId:e?.id ?? null, employeeId:e?.employee_id ?? row.employee_id, employmentType:e?.employment_type ?? null,
+    role:e?.role_title ?? null, team:e?.teams?.name ?? row.teams?.name ?? "—", teamId:e?.team_id ?? row.team_id,
+    location:e?.location ?? null, status:e?.status ?? "no_employment", startDate:e?.start_date ?? null,
+    endDate:e?.end_date ?? null, supervisorName:e?.supervisor_name ?? null };
+}
+
+export async function getPeople(supabase:Db,userId:string):Promise<PeopleRowDto[]|{error:"access_denied"}>{
+  if(!await loadIdentity(supabase,userId)) return {error:"access_denied"};
+  const {data,error}=await supabase.from("persons").select("*, teams(name), employments(*, teams(name))").is("archived_at",null).order("full_name");
+  if(error) throw new Error(error.message); return ((data??[]) as any[]).map(peopleRow);
+}
+
+export async function getPersonDetail(supabase:Db,userId:string,personId:string):Promise<PersonDetailDto|{error:"access_denied"|"not_found"}>{
+  const identity=await loadIdentity(supabase,userId); if(!identity)return {error:"access_denied"};
+  const [{data:person,error},{data:caseRows},{data:profiles}]=await Promise.all([
+    supabase.from("persons").select("*, teams(name), employments(*, teams(name))").eq("id",personId).maybeSingle(),
+    supabase.from("cases").select("*, persons(full_name,lab_id,team_id,teams(name))").eq("person_id",personId).order("created_at",{ascending:false}),
+    supabase.from("profiles").select("id,name")]);
+  if(error)throw new Error(error.message); if(!person)return {error:"not_found"};
+  const names=new Map(((profiles??[]) as any[]).map(x=>[x.id,x.name])); const row=peopleRow(person);
+  return {person:{...row,phone:person.phone??null}, employments:((person.employments??[]) as any[]).map(e=>({id:e.id,employmentType:e.employment_type,employeeId:e.employee_id,role:e.role_title,team:e.teams?.name??"—",location:e.location,status:e.status,startDate:e.start_date,endDate:e.end_date,supervisorName:e.supervisor_name,workload:e.workload,contractType:e.contract_type})), cases:((caseRows??[]) as any[]).map(c=>toCaseDto(c,computeAccess(identity,c),names))};
+}
+
 export async function setCaseConfirmation(supabase: Db, userId: string, caseId: string, confirmed: boolean) {
   const identity = await loadIdentity(supabase, userId);
   if (!identity || !["admin", "operator", "manager"].includes(identity.role)) {
@@ -728,8 +784,14 @@ export async function listTemplates(
         .map((v) => (typeof v === "string" ? v : (v?.key ?? "")))
         .filter(Boolean),
       applicableCaseTypes: (t.applicable_case_types ?? ["onboarding", "offboarding"]) as string[],
+      version: Number(t.version ?? 1),
     })),
   };
+}
+
+export async function listPublishedTemplates(supabase: Db, userId: string) {
+  const result = await listTemplates(supabase, userId);
+  return "error" in result ? result : { templates: result.templates.filter((t) => t.status === "Published") };
 }
 
 export interface SaveTemplateInput {

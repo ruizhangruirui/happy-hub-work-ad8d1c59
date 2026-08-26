@@ -87,6 +87,12 @@ export const createCaseFn = createServerFn({ method: "POST" })
   )
   .handler(({ data, context }) => wb.createCase(context.supabase as wb.Db, context.userId, data));
 
+const onboardingInput = z.object({ personId:z.string().uuid().optional(), preferredName:z.string().max(60).optional(), firstName:z.string().min(1).max(60),lastName:z.string().min(1).max(60),email:z.union([z.string().email(),z.literal("")]).optional(),teamId:z.string().uuid().nullable().optional(),caseType:z.literal("onboarding"),employmentType:z.enum(["Employee","Intern","Leased Labour"]),startDate:z.string().length(10),role:z.string().max(120).optional(),location:z.string().max(120).optional(),supervisorName:z.string().min(1).max(120),supervisorEmail:z.union([z.string().email(),z.literal("")]).optional(),priority:z.enum(["High","Medium","Low"]),notes:z.string().max(2000).optional(),visaRequired:z.boolean().optional()});
+export const createOnboardingCaseFn=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>onboardingInput.parse(d)).handler(({data,context})=>wb.createOnboardingCase(context.supabase as wb.Db,context.userId,data));
+export const createOffboardingCaseFn=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({personId:z.string().uuid(),employmentId:z.string().uuid(),lastWorkingDay:z.string().length(10),leavingType:z.string().max(80).optional(),leavingReason:z.string().max(500).optional(),priority:z.enum(["High","Medium","Low"]),notes:z.string().max(2000).optional()}).parse(d)).handler(({data,context})=>wb.createOffboardingCase(context.supabase as wb.Db,context.userId,data));
+export const getPeopleFn=createServerFn({method:"GET"}).middleware([requireSupabaseAuth]).handler(({context})=>wb.getPeople(context.supabase as wb.Db,context.userId));
+export const getPersonDetailFn=createServerFn({method:"GET"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({personId:z.string().uuid()}).parse(d)).handler(({data,context})=>wb.getPersonDetail(context.supabase as wb.Db,context.userId,data.personId));
+
 export const setCaseConfirmationFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data) => z.object({ caseId: z.string().uuid(), confirmed: z.boolean() }).parse(data))
@@ -134,6 +140,10 @@ export const saveUserFn = createServerFn({ method: "POST" })
 export const listTemplatesFn = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(({ context }) => wb.listTemplates(context.supabase as wb.Db, context.userId));
+
+export const listPublishedTemplatesFn = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(({ context }) => wb.listPublishedTemplates(context.supabase as wb.Db, context.userId));
 
 export const saveTemplateFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
