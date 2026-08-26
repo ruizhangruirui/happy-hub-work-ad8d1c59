@@ -125,7 +125,7 @@ function TemplatesPage() {
                   </div>
                   <div>
                     <span>{t("Version")}</span>
-                    <b>v1</b>
+                    <b>v{current.version}</b>
                   </div>
                 </div>
                 <div className="panelhead" style={{ marginTop: 14 }}>

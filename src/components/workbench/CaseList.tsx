@@ -3,11 +3,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState, type FormEvent } from "react";
 import { toast } from "sonner";
-import { createCaseFn, getWorkbenchDataFn } from "@/lib/workbench.functions";
+import { createOnboardingCaseFn, createOffboardingCaseFn, getPeopleFn, getWorkbenchDataFn } from "@/lib/workbench.functions";
 import type { WorkbenchData } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
 import { opErrorMessage } from "@/lib/errors";
 import { fmtDate } from "@/lib/format";
+import { EMPLOYMENT_TYPES } from "@/lib/domain";
 import { Badge, Empty, Icon, Loading, Modal } from "./ui";
 
 export function useWorkbench() {
@@ -84,7 +85,7 @@ export function CaseList({ caseType }: { caseType: "onboarding" | "offboarding" 
         </select>
         <select className="filter" value={empType} onChange={(e) => setEmpType(e.target.value)}>
           <option value="">{t("All Types")}</option>
-          {["Employee", "Intern", "Contractor"].map((x) => (
+          {EMPLOYMENT_TYPES.map((x) => (
             <option key={x} value={x}>
               {t(x)}
             </option>
@@ -173,9 +174,13 @@ function CreateCaseModal({
   close: () => void;
 }) {
   const { t } = useLang();
+  const {employmentId:preselectedEmploymentId}=useSearch({strict:false}) as {employmentId?:string};
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const callCreate = useServerFn(createCaseFn);
+  const callOnboarding = useServerFn(createOnboardingCaseFn);
+  const callOffboarding = useServerFn(createOffboardingCaseFn);
+  const fetchPeople = useServerFn(getPeopleFn);
+  const {data:peopleData}=useQuery({queryKey:["people"],queryFn:()=>fetchPeople(),enabled:caseType==="offboarding"});
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
     firstName: "",
@@ -192,6 +197,9 @@ function CreateCaseModal({
     priority: "Medium",
     notes: "",
     visaRequired: false,
+    employmentId: preselectedEmploymentId ?? "",
+    leavingType: "Resignation",
+    leavingReason: "",
   });
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -200,16 +208,16 @@ function CreateCaseModal({
     e.preventDefault();
     setBusy(true);
     try {
-      const res = await callCreate({
+      const selected=Array.isArray(peopleData)?peopleData.find(x=>x.employmentId===form.employmentId):undefined;
+      const res = caseType === "offboarding" ? await callOffboarding({data:{personId:selected?.personId??"",employmentId:form.employmentId,lastWorkingDay:form.startDate,leavingType:form.leavingType,leavingReason:form.leavingReason||undefined,priority:form.priority as "High"|"Medium"|"Low",notes:form.notes||undefined}}) : await callOnboarding({
         data: {
           firstName: form.firstName.trim(),
           lastName: form.lastName.trim(),
           email: form.email.trim() || undefined,
           teamId: form.teamId || null,
-          caseType,
-          employmentType: form.employmentType as "Employee" | "Intern" | "Contractor",
+          caseType: "onboarding",
+          employmentType: form.employmentType as (typeof EMPLOYMENT_TYPES)[number],
           startDate: form.startDate,
-          endDate: form.endDate || undefined,
           role: form.role || undefined,
           location: form.location || undefined,
           supervisorName: form.supervisorName.trim(),
@@ -236,6 +244,11 @@ function CreateCaseModal({
   return (
     <Modal title={caseType === "onboarding" ? t("New Onboarding") : t("New Offboarding")} close={close}>
       <form className="userform" onSubmit={submit}>
+        {caseType === "offboarding" ? <>
+          <label>{t("Select active person")}<select value={form.employmentId} onChange={set("employmentId")} required><option value="">—</option>{(Array.isArray(peopleData)?peopleData:[]).filter(x=>x.employmentId&&["active","ending"].includes(x.status)).map(x=><option key={x.employmentId!} value={x.employmentId!}>{x.displayName} · {x.employeeId??x.email??"—"} · {x.team}</option>)}</select></label>
+          <div className="two"><label>{t("Last working day")}<input type="date" value={form.startDate} onChange={set("startDate")} required/></label><label>{t("Leaving type")}<select value={form.leavingType} onChange={set("leavingType")}><option>Resignation</option><option>Termination</option><option>Contract End</option><option>Retirement</option></select></label></div>
+          <label>{t("Leaving reason")} ({t("Optional")})<textarea value={form.leavingReason} onChange={set("leavingReason")} maxLength={500}/></label>
+        </> : <>
         <div className="two">
           <label>
             {t("First Name")}
@@ -255,7 +268,7 @@ function CreateCaseModal({
             {t("TEAM")}
             <select value={form.teamId} onChange={set("teamId")}>
               <option value="">—</option>
-              {wb.teams.map((tm) => (
+              {wb.teams.filter((tm) => tm.status === "Active").map((tm) => (
                 <option key={tm.id} value={tm.id}>
                   {tm.name}
                 </option>
@@ -274,11 +287,12 @@ function CreateCaseModal({
           </label>
         </div>
         {form.employmentType !== "Leased Labour" ? <label className="workflowcheck"><input type="checkbox" checked={form.visaRequired} onChange={(e)=>setForm(f=>({...f,visaRequired:e.target.checked}))}/>{t("Visa / work permit required")}</label>:null}
+        </>}
         <div className="two">
-          <label>
-            {caseType === "onboarding" ? t("Start Date") : t("End Date")}
+          {caseType === "onboarding" ? <label>
+            {t("Start Date")}
             <input type="date" value={form.startDate} onChange={set("startDate")} required />
-          </label>
+          </label> : <span />}
           <label>
             {t("PRIORITY")}
             <select value={form.priority} onChange={set("priority")}>
@@ -290,7 +304,7 @@ function CreateCaseModal({
             </select>
           </label>
         </div>
-        <div className="two">
+        {caseType === "onboarding" ? <div className="two">
           <label>
             {t("Role / Title")}
             <input value={form.role} onChange={set("role")} maxLength={120} />
@@ -299,8 +313,8 @@ function CreateCaseModal({
             {t("Location")}
             <input value={form.location} onChange={set("location")} maxLength={120} />
           </label>
-        </div>
-        <div className="two">
+        </div> : null}
+        {caseType === "onboarding" ? <div className="two">
           <label>
             {t("Supervisor")}
             <input
@@ -315,7 +329,7 @@ function CreateCaseModal({
             {t("Supervisor Email")} ({t("Optional")})
             <input type="email" value={form.supervisorEmail} onChange={set("supervisorEmail")} maxLength={320} />
           </label>
-        </div>
+        </div> : null}
         <label>
           {t("Notes")}
           <textarea value={form.notes} onChange={set("notes")} maxLength={2000} rows={3} />

@@ -16,6 +16,7 @@ import { Route as AuthenticatedEmailRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedEmailCenterRouteImport } from './routes/_authenticated/email-center'
 import { Route as AuthenticatedOffboardingRouteImport } from './routes/_authenticated/offboarding'
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated/onboarding'
+import { Route as AuthenticatedPeopleRouteImport } from './routes/_authenticated/people'
 import { Route as AuthenticatedRosterRouteImport } from './routes/_authenticated/roster'
 import { Route as AuthenticatedSearchRouteImport } from './routes/_authenticated/search'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
@@ -23,6 +24,7 @@ import { Route as AuthenticatedTemplatesRouteImport } from './routes/_authentica
 import { Route as AuthenticatedWorkRouteImport } from './routes/_authenticated/work'
 import { Route as RespondTokenRouteImport } from './routes/respond.$token'
 import { Route as AuthenticatedCasesCaseIdRouteImport } from './routes/_authenticated/cases.$caseId'
+import { Route as AuthenticatedPeoplePersonIdRouteImport } from './routes/_authenticated/people.$personId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -58,6 +60,11 @@ const AuthenticatedOffboardingRoute =
 const AuthenticatedOnboardingRoute = AuthenticatedOnboardingRouteImport.update({
   id: '/onboarding',
   path: '/onboarding',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedPeopleRoute = AuthenticatedPeopleRouteImport.update({
+  id: '/people',
+  path: '/people',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedRosterRoute = AuthenticatedRosterRouteImport.update({
@@ -96,6 +103,12 @@ const AuthenticatedCasesCaseIdRoute =
     path: '/cases/$caseId',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedPeoplePersonIdRoute =
+  AuthenticatedPeoplePersonIdRouteImport.update({
+    id: '/$personId',
+    path: '/$personId',
+    getParentRoute: () => AuthenticatedPeopleRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -104,6 +117,7 @@ export interface FileRoutesByFullPath {
   '/email-center': typeof AuthenticatedEmailCenterRoute
   '/offboarding': typeof AuthenticatedOffboardingRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
+  '/people': typeof AuthenticatedPeopleRouteWithChildren
   '/roster': typeof AuthenticatedRosterRoute
   '/search': typeof AuthenticatedSearchRoute
   '/settings': typeof AuthenticatedSettingsRoute
@@ -111,6 +125,7 @@ export interface FileRoutesByFullPath {
   '/work': typeof AuthenticatedWorkRoute
   '/respond/$token': typeof RespondTokenRoute
   '/cases/$caseId': typeof AuthenticatedCasesCaseIdRoute
+  '/people/$personId': typeof AuthenticatedPeoplePersonIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -119,6 +134,7 @@ export interface FileRoutesByTo {
   '/email-center': typeof AuthenticatedEmailCenterRoute
   '/offboarding': typeof AuthenticatedOffboardingRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
+  '/people': typeof AuthenticatedPeopleRouteWithChildren
   '/roster': typeof AuthenticatedRosterRoute
   '/search': typeof AuthenticatedSearchRoute
   '/settings': typeof AuthenticatedSettingsRoute
@@ -126,6 +142,7 @@ export interface FileRoutesByTo {
   '/work': typeof AuthenticatedWorkRoute
   '/respond/$token': typeof RespondTokenRoute
   '/cases/$caseId': typeof AuthenticatedCasesCaseIdRoute
+  '/people/$personId': typeof AuthenticatedPeoplePersonIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -136,6 +153,7 @@ export interface FileRoutesById {
   '/_authenticated/email-center': typeof AuthenticatedEmailCenterRoute
   '/_authenticated/offboarding': typeof AuthenticatedOffboardingRoute
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
+  '/_authenticated/people': typeof AuthenticatedPeopleRouteWithChildren
   '/_authenticated/roster': typeof AuthenticatedRosterRoute
   '/_authenticated/search': typeof AuthenticatedSearchRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
@@ -143,6 +161,7 @@ export interface FileRoutesById {
   '/_authenticated/work': typeof AuthenticatedWorkRoute
   '/respond/$token': typeof RespondTokenRoute
   '/_authenticated/cases/$caseId': typeof AuthenticatedCasesCaseIdRoute
+  '/_authenticated/people/$personId': typeof AuthenticatedPeoplePersonIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -153,6 +172,7 @@ export interface FileRouteTypes {
     | '/email-center'
     | '/offboarding'
     | '/onboarding'
+    | '/people'
     | '/roster'
     | '/search'
     | '/settings'
@@ -160,6 +180,7 @@ export interface FileRouteTypes {
     | '/work'
     | '/respond/$token'
     | '/cases/$caseId'
+    | '/people/$personId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -168,6 +189,7 @@ export interface FileRouteTypes {
     | '/email-center'
     | '/offboarding'
     | '/onboarding'
+    | '/people'
     | '/roster'
     | '/search'
     | '/settings'
@@ -175,6 +197,7 @@ export interface FileRouteTypes {
     | '/work'
     | '/respond/$token'
     | '/cases/$caseId'
+    | '/people/$personId'
   id:
     | '__root__'
     | '/'
@@ -184,6 +207,7 @@ export interface FileRouteTypes {
     | '/_authenticated/email-center'
     | '/_authenticated/offboarding'
     | '/_authenticated/onboarding'
+    | '/_authenticated/people'
     | '/_authenticated/roster'
     | '/_authenticated/search'
     | '/_authenticated/settings'
@@ -191,6 +215,7 @@ export interface FileRouteTypes {
     | '/_authenticated/work'
     | '/respond/$token'
     | '/_authenticated/cases/$caseId'
+    | '/_authenticated/people/$personId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -251,6 +276,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedOnboardingRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/people': {
+      id: '/_authenticated/people'
+      path: '/people'
+      fullPath: '/people'
+      preLoaderRoute: typeof AuthenticatedPeopleRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/roster': {
       id: '/_authenticated/roster'
       path: '/roster'
@@ -300,14 +332,33 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCasesCaseIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/people/$personId': {
+      id: '/_authenticated/people/$personId'
+      path: '/$personId'
+      fullPath: '/people/$personId'
+      preLoaderRoute: typeof AuthenticatedPeoplePersonIdRouteImport
+      parentRoute: typeof AuthenticatedPeopleRoute
+    }
   }
 }
+
+interface AuthenticatedPeopleRouteChildren {
+  AuthenticatedPeoplePersonIdRoute: typeof AuthenticatedPeoplePersonIdRoute
+}
+
+const AuthenticatedPeopleRouteChildren: AuthenticatedPeopleRouteChildren = {
+  AuthenticatedPeoplePersonIdRoute: AuthenticatedPeoplePersonIdRoute,
+}
+
+const AuthenticatedPeopleRouteWithChildren =
+  AuthenticatedPeopleRoute._addFileChildren(AuthenticatedPeopleRouteChildren)
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedEmailRoute: typeof AuthenticatedEmailRoute
   AuthenticatedEmailCenterRoute: typeof AuthenticatedEmailCenterRoute
   AuthenticatedOffboardingRoute: typeof AuthenticatedOffboardingRoute
   AuthenticatedOnboardingRoute: typeof AuthenticatedOnboardingRoute
+  AuthenticatedPeopleRoute: typeof AuthenticatedPeopleRouteWithChildren
   AuthenticatedRosterRoute: typeof AuthenticatedRosterRoute
   AuthenticatedSearchRoute: typeof AuthenticatedSearchRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
@@ -321,6 +372,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedEmailCenterRoute: AuthenticatedEmailCenterRoute,
   AuthenticatedOffboardingRoute: AuthenticatedOffboardingRoute,
   AuthenticatedOnboardingRoute: AuthenticatedOnboardingRoute,
+  AuthenticatedPeopleRoute: AuthenticatedPeopleRouteWithChildren,
   AuthenticatedRosterRoute: AuthenticatedRosterRoute,
   AuthenticatedSearchRoute: AuthenticatedSearchRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,

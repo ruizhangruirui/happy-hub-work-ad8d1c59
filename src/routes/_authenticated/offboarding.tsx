@@ -5,6 +5,8 @@ export const Route = createFileRoute("/_authenticated/offboarding")({
   validateSearch: (s: Record<string, unknown>) => ({
     q: typeof s["q"] === "string" ? s["q"] : "",
     new: typeof s["new"] === "string" ? s["new"] : "",
+    personId: typeof s["personId"] === "string" ? s["personId"] : "",
+    employmentId: typeof s["employmentId"] === "string" ? s["employmentId"] : "",
   }),
   head: () => ({
     meta: [

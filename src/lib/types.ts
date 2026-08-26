@@ -46,6 +46,8 @@ export interface CaseDto {
   team: string;
   startDate: string;
   endDate: string | null;
+  effectiveDate: string | null;
+  employmentId: string | null;
   owner: string;
   ownerId: string;
   status: string;
@@ -124,6 +126,8 @@ export interface ExternalRequestDto {
 
 export interface CaseDetailDto {
   case: CaseDto & {
+    givenName: string | null;
+    preferredName: string | null;
     personEmail: string | null;
     employeeId: string | null;
     phone: string | null;
@@ -152,7 +156,11 @@ export interface TemplateDto {
   body: string;
   variables: string[];
   applicableCaseTypes: string[];
+  version: number;
 }
+
+export interface PeopleRowDto { personId:string;displayName:string;givenName:string|null;familyName:string|null;preferredName:string|null;email:string|null;employmentId:string|null;employeeId:string|null;employmentType:string|null;role:string|null;team:string;teamId:string|null;location:string|null;status:string;startDate:string|null;endDate:string|null;supervisorName:string|null; }
+export interface PersonDetailDto { person:PeopleRowDto & {phone:string|null}; employments:Array<{id:string;employmentType:string;employeeId:string|null;role:string|null;team:string;location:string|null;status:string;startDate:string|null;endDate:string|null;supervisorName:string|null;workload:number|null;contractType:string|null}>; cases:CaseDto[]; }
 
 export interface RosterPersonDto {
   personId: string;
