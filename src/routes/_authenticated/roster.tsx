@@ -6,6 +6,7 @@ import { getActiveRosterFn } from "@/lib/workbench.functions";
 import type { RosterPersonDto } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
 import { fmtDate } from "@/lib/format";
+import { businessDate } from "@/lib/domain";
 import { Badge, Empty, Icon, Loading } from "@/components/workbench/ui";
 
 export const Route = createFileRoute("/_authenticated/roster")({
@@ -46,13 +47,13 @@ function ActiveRosterPage() {
     const rows = [["Name","Employee ID","Email","Employment Type","Role","Team","Location","Start Date","Supervisor"], ...filtered.map((x) => [x.name,x.employeeId ?? "",x.email ?? "",x.employmentType,x.role ?? "",x.team,x.location ?? "",x.startDate,x.supervisorName ?? ""])];
     const csv = rows.map((row) => row.map((v) => `"${String(v).replaceAll('"','""')}"`).join(",")).join("\n");
     const url = URL.createObjectURL(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }));
-    const a = document.createElement("a"); a.href = url; a.download = `active-roster-${new Date().toISOString().slice(0,10)}.csv`; a.click(); URL.revokeObjectURL(url);
+    const a = document.createElement("a"); a.href = url; a.download = `active-roster-${businessDate()}.csv`; a.click(); URL.revokeObjectURL(url);
   };
   if (isLoading) return <Loading />;
   if (data && !Array.isArray(data)) return <Empty icon="lock" title={t("You don't have permission to do that.")} />;
 
   return <div>
-    <div className="pagehead rosterhead"><div><span className="eyebrow">{t("PEOPLE OPERATIONS")}</span><h1>{t("Active Roster")}</h1><p>{t("Confirmed employees active as of today")}</p></div><button className="secondary" onClick={exportCsv}><Icon name="doc" /> {t("Export Excel")}</button></div>
+    <div className="pagehead rosterhead"><div><span className="eyebrow">{t("PEOPLE OPERATIONS")}</span><h1>{t("Active Roster")}</h1><p>{t("Confirmed employees active as of today")}</p></div><button className="secondary" onClick={exportCsv}><Icon name="doc" /> {t("Export CSV")}</button></div>
     <div className="rosterstats">
       <div className="statcard"><span>{t("Active People")}</span><strong>{roster.length}</strong></div>
       <div className="statcard"><span>{t("Employees")}</span><strong>{roster.filter(x=>x.employmentType==="Employee").length}</strong></div>

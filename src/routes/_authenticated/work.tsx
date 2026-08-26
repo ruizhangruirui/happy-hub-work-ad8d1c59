@@ -8,6 +8,7 @@ import type { WorkbenchData } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
 import { opErrorMessage } from "@/lib/errors";
 import { fmtDate, greetingFor, initialsOf } from "@/lib/format";
+import { businessDate } from "@/lib/domain";
 import { Badge, Empty, Icon, Loading } from "@/components/workbench/ui";
 
 export const Route = createFileRoute("/_authenticated/work")({
@@ -40,7 +41,7 @@ export function WorkPage() {
     const in14d = now + 14 * 86400000;
     const dueSoon = open.filter((x) => x.due && new Date(x.due).getTime() <= in14d);
     const waiting = open.filter((x) => x.status === "Waiting" || x.status === "Blocked");
-    const today = new Date().toISOString().slice(0, 10);
+    const today = businessDate();
     const completedToday = data.tasks.filter((x) => x.status === "Completed" && x.completedAt?.slice(0, 10) === today);
     const upcoming = data.cases
       .filter((c) => c.caseType === "Onboarding" && c.startDate >= today)
@@ -99,7 +100,7 @@ export function WorkPage() {
               >
                 <Icon name="onboarding" /> {t("New Onboarding")}
               </button>
-              <button onClick={() => navigate({ to: "/offboarding", search: { q: "", new: "1" } })}>
+              <button onClick={() => navigate({ to: "/offboarding", search: { q: "", new: "1", personId: "", employmentId: "" } })}>
                 <Icon name="offboarding" /> {t("New Offboarding")}
               </button>
               <button onClick={() => navigate({ to: "/email", search: { caseId: "", taskId: "" } })}>

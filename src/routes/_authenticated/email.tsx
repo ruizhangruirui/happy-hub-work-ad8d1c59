@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { completeEmailTaskFn, getCaseDetailFn, listTemplatesFn, saveEmailDraftFn } from "@/lib/workbench.functions";
+import { completeEmailTaskFn, getCaseDetailFn, listPublishedTemplatesFn, saveEmailDraftFn } from "@/lib/workbench.functions";
 import { useWorkbench } from "@/components/workbench/CaseList";
 import type { CaseDetailDto, TemplateDto } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
@@ -33,7 +33,7 @@ export function EmailPage() {
   const { t, lang } = useLang();
   const search = useSearch({ strict:false }) as {caseId?:string;taskId?:string};
   const qc=useQueryClient();
-  const fetchTemplates = useServerFn(listTemplatesFn);
+  const fetchTemplates = useServerFn(listPublishedTemplatesFn);
   const fetchDetail = useServerFn(getCaseDetailFn);
   const callSaveDraft = useServerFn(saveEmailDraftFn);
   const callCompleteTask=useServerFn(completeEmailTaskFn);
@@ -71,7 +71,7 @@ export function EmailPage() {
   const vars = useMemo(() => {
     if (!detail) return {} as Record<string, string>;
     const c = detail.case;
-    const firstName = c.name.split(" ")[0] ?? "";
+    const firstName = c.preferredName || c.givenName || c.name;
     return {
       "person.first_name": firstName,
       "person.full_name": c.name,
@@ -156,7 +156,7 @@ export function EmailPage() {
                 <div>
                   <b>{tpl.name}</b>
                   <span>
-                    {t(tpl.category)} · v1 · {fmtDate(tpl.updatedAt, lang)}
+                    {t(tpl.category)} · v{tpl.version} · {fmtDate(tpl.updatedAt, lang)}
                   </span>
                 </div>
               </button>
