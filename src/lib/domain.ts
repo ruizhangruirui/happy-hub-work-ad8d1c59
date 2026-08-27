@@ -13,3 +13,15 @@ export function businessDate(date = new Date(), timeZone = BUSINESS_TIME_ZONE) {
 export function displayName(input:{preferredName?:string|null;givenName?:string|null;familyName?:string|null;fallback:string}) {
   return input.preferredName?.trim() || [input.givenName,input.familyName].filter(Boolean).join(" ").trim() || input.fallback;
 }
+
+export function effectiveEmploymentStatus(input:{storedStatus:string;startDate:string|null;confirmedOnboarding:boolean;confirmedOffboardingDate:string|null},today:string):EmploymentStatus {
+  if(input.storedStatus==="cancelled")return "cancelled";
+  if(input.confirmedOffboardingDate)return input.confirmedOffboardingDate<today?"ended":"ending";
+  if(!input.confirmedOnboarding)return "planned";
+  return input.startDate&&input.startDate>today?"planned":"active";
+}
+
+export function taskDateBuckets<T extends {due:string|null}>(tasks:T[],today:string,windowDays=14){
+  const end=new Date(`${today}T12:00:00Z`);end.setUTCDate(end.getUTCDate()+windowDays);const through=`${end.getUTCFullYear()}-${String(end.getUTCMonth()+1).padStart(2,"0")}-${String(end.getUTCDate()).padStart(2,"0")}`;
+  return {overdue:tasks.filter(x=>x.due&&x.due<today),dueSoon:tasks.filter(x=>x.due&&x.due>=today&&x.due<=through)};
+}

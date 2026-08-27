@@ -62,36 +62,12 @@ export const toggleChecklistFn = createServerFn({ method: "POST" })
   .inputValidator((data) => z.object({ itemId: z.string().uuid(), complete: z.boolean() }).parse(data))
   .handler(({ data, context }) => wb.toggleChecklist(context.supabase as wb.Db, context.userId, data));
 
-export const createCaseFn = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((data) =>
-    z
-      .object({
-        firstName: z.string().min(1).max(60),
-        lastName: z.string().min(1).max(60),
-        email: z.union([z.string().email().max(320), z.literal("")]).optional(),
-        teamId: z.string().uuid().nullable().optional(),
-        caseType: z.enum(["onboarding", "offboarding"]),
-        employmentType: z.enum(["Employee", "Intern", "Leased Labour"]),
-        startDate: z.string().min(4).max(10),
-        endDate: z.string().max(10).optional(),
-        role: z.string().max(120).optional(),
-        location: z.string().max(120).optional(),
-        supervisorName: z.string().min(1).max(120),
-        supervisorEmail: z.union([z.string().email().max(320), z.literal("")]).optional(),
-        priority: z.enum(["High", "Medium", "Low"]),
-        notes: z.string().max(2000).optional(),
-        visaRequired: z.boolean().optional(),
-      })
-      .parse(data),
-  )
-  .handler(({ data, context }) => wb.createCase(context.supabase as wb.Db, context.userId, data));
-
-const onboardingInput = z.object({ personId:z.string().uuid().optional(), preferredName:z.string().max(60).optional(), firstName:z.string().min(1).max(60),lastName:z.string().min(1).max(60),email:z.union([z.string().email(),z.literal("")]).optional(),teamId:z.string().uuid().nullable().optional(),caseType:z.literal("onboarding"),employmentType:z.enum(["Employee","Intern","Leased Labour"]),startDate:z.string().length(10),role:z.string().max(120).optional(),location:z.string().max(120).optional(),supervisorName:z.string().min(1).max(120),supervisorEmail:z.union([z.string().email(),z.literal("")]).optional(),priority:z.enum(["High","Medium","Low"]),notes:z.string().max(2000).optional(),visaRequired:z.boolean().optional()});
+const onboardingInput = z.object({ personId:z.string().uuid().optional(), preferredName:z.string().max(60).optional(),employeeId:z.string().max(80).optional(),allowNewDespiteMatch:z.boolean().optional(), firstName:z.string().min(1).max(60),lastName:z.string().min(1).max(60),email:z.union([z.string().email(),z.literal("")]).optional(),teamId:z.string().uuid().nullable().optional(),caseType:z.literal("onboarding"),employmentType:z.enum(["Employee","Intern","Leased Labour"]),startDate:z.string().length(10),role:z.string().max(120).optional(),location:z.string().max(120).optional(),supervisorName:z.string().min(1).max(120),supervisorEmail:z.union([z.string().email(),z.literal("")]).optional(),priority:z.enum(["High","Medium","Low"]),notes:z.string().max(2000).optional(),visaRequired:z.boolean().optional()});
 export const createOnboardingCaseFn=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>onboardingInput.parse(d)).handler(({data,context})=>wb.createOnboardingCase(context.supabase as wb.Db,context.userId,data));
 export const createOffboardingCaseFn=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({personId:z.string().uuid(),employmentId:z.string().uuid(),lastWorkingDay:z.string().length(10),leavingType:z.string().max(80).optional(),leavingReason:z.string().max(500).optional(),priority:z.enum(["High","Medium","Low"]),notes:z.string().max(2000).optional()}).parse(d)).handler(({data,context})=>wb.createOffboardingCase(context.supabase as wb.Db,context.userId,data));
 export const getPeopleFn=createServerFn({method:"GET"}).middleware([requireSupabaseAuth]).handler(({context})=>wb.getPeople(context.supabase as wb.Db,context.userId));
 export const getPersonDetailFn=createServerFn({method:"GET"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({personId:z.string().uuid()}).parse(d)).handler(({data,context})=>wb.getPersonDetail(context.supabase as wb.Db,context.userId,data.personId));
+export const findOnboardingCandidatesFn=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({employeeId:z.string().max(80).optional(),email:z.string().max(320).optional(),fullName:z.string().max(140),teamId:z.string().uuid().nullable()}).parse(d)).handler(({data,context})=>wb.findOnboardingCandidates(context.supabase as wb.Db,context.userId,data));
 
 export const setCaseConfirmationFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

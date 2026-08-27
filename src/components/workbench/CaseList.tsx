@@ -3,8 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState, type FormEvent } from "react";
 import { toast } from "sonner";
-import { createOnboardingCaseFn, createOffboardingCaseFn, getPeopleFn, getWorkbenchDataFn } from "@/lib/workbench.functions";
-import type { WorkbenchData } from "@/lib/types";
+import { createOnboardingCaseFn, createOffboardingCaseFn, findOnboardingCandidatesFn, getPeopleFn, getWorkbenchDataFn } from "@/lib/workbench.functions";
+import type { PersonCandidateDto, WorkbenchData } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
 import { opErrorMessage } from "@/lib/errors";
 import { fmtDate } from "@/lib/format";
@@ -180,8 +180,11 @@ function CreateCaseModal({
   const callOnboarding = useServerFn(createOnboardingCaseFn);
   const callOffboarding = useServerFn(createOffboardingCaseFn);
   const fetchPeople = useServerFn(getPeopleFn);
+  const findCandidates=useServerFn(findOnboardingCandidatesFn);
   const {data:peopleData}=useQuery({queryKey:["people"],queryFn:()=>fetchPeople(),enabled:caseType==="offboarding"});
   const [busy, setBusy] = useState(false);
+  const [candidates,setCandidates]=useState<PersonCandidateDto[]>([]);
+  const [duplicateResolved,setDuplicateResolved]=useState(false);
   const [form, setForm] = useState({
     firstName: "",
     lastName: "",
@@ -200,6 +203,9 @@ function CreateCaseModal({
     employmentId: preselectedEmploymentId ?? "",
     leavingType: "Resignation",
     leavingReason: "",
+    employeeId:"",
+    personId:"",
+    allowNewDespiteMatch:false,
   });
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -208,12 +214,21 @@ function CreateCaseModal({
     e.preventDefault();
     setBusy(true);
     try {
+      if(caseType==="onboarding"&&!duplicateResolved){
+        const found=await findCandidates({data:{employeeId:form.employeeId||undefined,email:form.email||undefined,fullName:`${form.firstName} ${form.lastName}`,teamId:form.teamId||null}});
+        if("error" in found){toast.error(opErrorMessage(t,found.error));return}
+        if(found.candidates.length){setCandidates(found.candidates as PersonCandidateDto[]);return}
+        setDuplicateResolved(true);
+      }
       const selected=Array.isArray(peopleData)?peopleData.find(x=>x.employmentId===form.employmentId):undefined;
       const res = caseType === "offboarding" ? await callOffboarding({data:{personId:selected?.personId??"",employmentId:form.employmentId,lastWorkingDay:form.startDate,leavingType:form.leavingType,leavingReason:form.leavingReason||undefined,priority:form.priority as "High"|"Medium"|"Low",notes:form.notes||undefined}}) : await callOnboarding({
         data: {
           firstName: form.firstName.trim(),
           lastName: form.lastName.trim(),
           email: form.email.trim() || undefined,
+          employeeId:form.employeeId.trim()||undefined,
+          personId:form.personId||undefined,
+          allowNewDespiteMatch:form.allowNewDespiteMatch,
           teamId: form.teamId || null,
           caseType: "onboarding",
           employmentType: form.employmentType as (typeof EMPLOYMENT_TYPES)[number],
@@ -228,6 +243,7 @@ function CreateCaseModal({
         },
       });
       if ("error" in res) {
+        if(res.error==="offboarding_exists"&&"caseId" in res){toast.info(t("An offboarding case already exists for this employment."));navigate({to:"/cases/$caseId",params:{caseId:res.caseId}});return}
         toast.error(opErrorMessage(t, res.error));
         return;
       }
@@ -252,17 +268,19 @@ function CreateCaseModal({
         <div className="two">
           <label>
             {t("First Name")}
-            <input value={form.firstName} onChange={set("firstName")} required maxLength={60} />
+            <input value={form.firstName} onChange={e=>{set("firstName")(e);setDuplicateResolved(false)}} required maxLength={60} />
           </label>
           <label>
             {t("Last Name")}
-            <input value={form.lastName} onChange={set("lastName")} required maxLength={60} />
+            <input value={form.lastName} onChange={e=>{set("lastName")(e);setDuplicateResolved(false)}} required maxLength={60} />
           </label>
         </div>
         <label>
           {t("Email")} ({t("Optional")})
-          <input type="email" value={form.email} onChange={set("email")} maxLength={320} />
+          <input type="email" value={form.email} onChange={e=>{set("email")(e);setDuplicateResolved(false)}} maxLength={320} />
         </label>
+        <label>{t("Employee ID")} ({t("Optional")})<input value={form.employeeId} onChange={e=>{set("employeeId")(e);setDuplicateResolved(false)}} maxLength={80}/></label>
+        {candidates.length?<div className="panel"><b>{t("Possible existing person found")}</b>{candidates.map(c=><div className="orgrow" key={c.personId}><div><b>{c.displayName}</b><span>{c.lastEmploymentType??"—"} · {c.lastTeam??"—"} · {c.lastEndDate??"—"}</span><small>{t(c.matchStrength==="strong"?"Strong identifier match":"Name-only warning; never auto-merged")}</small></div><button type="button" className="secondary" onClick={()=>{setForm(f=>({...f,personId:c.personId,employeeId:c.employeeId??f.employeeId,allowNewDespiteMatch:false}));setCandidates([]);setDuplicateResolved(true)}}>{t("Use Existing Person")}</button></div>)}{candidates.every(c=>c.matchStrength==="warning")?<button type="button" className="textbutton" onClick={()=>{setForm(f=>({...f,personId:"",allowNewDespiteMatch:true}));setCandidates([]);setDuplicateResolved(true)}}>{t("Create New Person Anyway")}</button>:null}</div>:null}
         <div className="two">
           <label>
             {t("TEAM")}
