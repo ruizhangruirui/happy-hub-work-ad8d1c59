@@ -40,11 +40,11 @@ begin
   leased := lower(coalesce(c.employment_type,'')) in ('leased labour','leased labor','contractor');
 
   insert into public.case_workflow_items(case_id,step_key,title,description,sequence,target_date,status) values
-    (_case_id,'system_entry',case when leased then 'Huawei system site access' else 'Huawei system onboarding',
-      case when leased then 'Register site access and push to pending entry.' else 'Complete the system onboarding process.',1,null,'Not Started'),
-    (_case_id,'contract',case when leased then 'Supplier request & contract' else 'Contract signed',
-      case when leased then 'Send the leasing request to the supplier and confirm contract signature.' else 'Prepare and sign the employment or internship contract.',2,null,'Not Started'),
-    (_case_id,'pending',case when leased then 'Push to pending entry' else 'Push to pending onboarding',
+    (_case_id,'system_entry',case when leased then 'Huawei system site access' else 'Huawei system onboarding' end,
+      case when leased then 'Register site access and push to pending entry.' else 'Complete the system onboarding process.' end,1,null,'Not Started'),
+    (_case_id,'contract',case when leased then 'Supplier request & contract' else 'Contract signed' end,
+      case when leased then 'Send the leasing request to the supplier and confirm contract signature.' else 'Prepare and sign the employment or internship contract.' end,2,null,'Not Started'),
+    (_case_id,'pending',case when leased then 'Push to pending entry' else 'Push to pending onboarding' end,
       'Confirm the person is ready in the pending population.',3,null,'Not Started')
   on conflict(case_id,step_key) do nothing;
 

@@ -28,8 +28,8 @@ Onboarding and offboarding often involve HR, administration, IT, reception, lab 
 
 - A confirmed onboarding enters the active roster on the employee's start date.
 - A pending offboarding does not remove the employee.
-- A confirmed offboarding removes the matching employee from the active roster.
-- Employee ID or email should be kept consistent between onboarding and offboarding records for accurate matching.
+- A confirmed offboarding keeps the employee in the roster through the last working day and removes them after that date.
+- Employee ID is canonical on the Person and is enforced consistently across Employment history by PostgreSQL.
 
 ## Technology Stack
 

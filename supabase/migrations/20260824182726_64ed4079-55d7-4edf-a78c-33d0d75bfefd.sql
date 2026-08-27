@@ -21,6 +21,10 @@ grant select, insert, update, delete on public.case_workflow_items to authentica
 grant all on public.case_workflow_items to service_role;
 alter table public.case_workflow_items enable row level security;
 
+drop policy if exists "Workflow visible with case access" on public.case_workflow_items;
+drop policy if exists "Case editors create workflow" on public.case_workflow_items;
+drop policy if exists "Case editors update workflow" on public.case_workflow_items;
+drop policy if exists "Case owners delete workflow" on public.case_workflow_items;
 create policy "Workflow visible with case access" on public.case_workflow_items
   for select to authenticated using (public.case_access(auth.uid(), case_id) <> 'none');
 create policy "Case editors create workflow" on public.case_workflow_items

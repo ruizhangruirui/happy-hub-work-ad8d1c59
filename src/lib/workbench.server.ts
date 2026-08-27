@@ -549,13 +549,13 @@ export interface CreateCaseInput {
   visaRequired?: boolean | undefined;
 }
 
-export async function createOnboardingCase(supabase: Db, userId: string, input: CreateCaseInput & { personId?: string | undefined; preferredName?: string | undefined;employeeId?:string|undefined;allowNewDespiteMatch?:boolean|undefined }) {
+export async function createOnboardingCase(supabase: Db, userId: string, input: CreateCaseInput & { personId?: string | undefined; preferredName?: string | undefined;employeeId?:string|undefined }) {
   const { data, error } = await supabase.rpc("create_onboarding_case_v2", {
     _existing_person_id: input.personId || null, _given_name: input.firstName, _family_name: input.lastName,
     _preferred_name: input.preferredName || null, _email: input.email || null,_employee_id:input.employeeId||null, _team_id: input.teamId || null,
     _employment_type: input.employmentType, _effective_date: input.startDate, _role_title: input.role || null,
     _location: input.location || null, _supervisor_name: input.supervisorName, _supervisor_email: input.supervisorEmail || null,
-    _workload: null, _priority: input.priority, _notes: input.notes || null, _visa_required: input.visaRequired ?? false,_allow_new_despite_match:input.allowNewDespiteMatch??false,
+    _workload: null, _priority: input.priority, _notes: input.notes || null, _visa_required: input.visaRequired ?? false,
   });
   if (error) { if (error.code === "42501") return { error: "forbidden" as const }; throw new Error(error.message); }
   return { ok: true as const, caseId: (data as any).caseId as string };
@@ -605,7 +605,7 @@ export async function findOnboardingCandidates(supabase:Db,userId:string,input:{
   if(!await loadIdentity(supabase,userId))return {error:"access_denied" as const};
   const {data,error}=await supabase.rpc("find_onboarding_person_candidates",{_employee_id:input.employeeId||null,_email:input.email||null,_full_name:input.fullName,_team_id:input.teamId});
   if(error){if(error.code==="42501")return {error:"forbidden" as const};throw new Error(error.message)}
-  return {candidates:((data??[]) as any[]).map(x=>({personId:x.person_id,displayName:x.display_name,email:x.email,employeeId:x.employee_id,matchStrength:x.match_strength,matchReason:x.match_reason,lastEmploymentType:x.last_employment_type,lastTeam:x.last_team,lastEndDate:x.last_end_date}))};
+  return {candidates:((data??[]) as any[]).map(x=>({personId:x.person_id,displayName:x.display_name,email:x.email,employeeId:x.employee_id,matchStrength:x.match_strength,matchReason:x.match_reason,lastEmploymentType:x.last_employment_type,lastTeam:x.last_team,lastEndDate:x.last_end_date,accessible:x.accessible}))};
 }
 
 export async function setCaseConfirmation(supabase: Db, userId: string, caseId: string, confirmed: boolean) {
