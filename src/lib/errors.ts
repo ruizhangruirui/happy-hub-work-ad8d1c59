@@ -14,6 +14,8 @@ export function opErrorMessage(t: (s: string) => string, code: string | undefine
       return t("This email is already registered.");
     case "already_shared":
       return t("This person is already shared on the case.");
+    case "offboarding_exists":
+      return t("An offboarding case already exists for this employment.");
     default:
       return t("Something went wrong. Please try again.");
   }

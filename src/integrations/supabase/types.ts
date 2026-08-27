@@ -747,26 +747,6 @@ export type Database = {
         Args: { _case_id: string; _user_id: string }
         Returns: string
       }
-      create_workbench_case: {
-        Args: {
-          _case_type: string
-          _email: string
-          _employment_type: string
-          _end_date: string
-          _first_name: string
-          _last_name: string
-          _location: string
-          _notes: string
-          _priority: string
-          _role: string
-          _start_date: string
-          _supervisor_email: string
-          _supervisor_name: string
-          _team_id: string
-          _visa_required?: boolean
-        }
-        Returns: string
-      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

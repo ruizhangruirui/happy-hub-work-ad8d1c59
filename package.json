@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:integration": "vitest run src/lib/phase1-hardening.test.ts",
     "format": "prettier --write ."
   },
   "overrides": {

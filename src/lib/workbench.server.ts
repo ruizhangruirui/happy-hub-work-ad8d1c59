@@ -549,38 +549,13 @@ export interface CreateCaseInput {
   visaRequired?: boolean | undefined;
 }
 
-export async function createCase(supabase: Db, userId: string, input: CreateCaseInput) {
-  const { data: caseId, error } = await supabase.rpc("create_workbench_case", {
-    _first_name: input.firstName,
-    _last_name: input.lastName,
-    _email: input.email || null,
-    _team_id: input.teamId || null,
-    _case_type: input.caseType === "onboarding" ? "Onboarding" : "Offboarding",
-    _employment_type: input.employmentType,
-    _start_date: input.startDate,
-    _end_date: input.endDate || null,
-    _role: input.role || null,
-    _location: input.location || null,
-    _supervisor_name: input.supervisorName,
-    _supervisor_email: input.supervisorEmail || null,
-    _priority: input.priority,
-    _notes: input.notes || null,
-    _visa_required: input.visaRequired ?? false,
-  });
-  if (error) {
-    if (error.code === "42501") return { error: "forbidden" as const };
-    throw new Error(error.message);
-  }
-  return { ok: true as const, caseId: caseId as string };
-}
-
-export async function createOnboardingCase(supabase: Db, userId: string, input: CreateCaseInput & { personId?: string | undefined; preferredName?: string | undefined }) {
+export async function createOnboardingCase(supabase: Db, userId: string, input: CreateCaseInput & { personId?: string | undefined; preferredName?: string | undefined;employeeId?:string|undefined;allowNewDespiteMatch?:boolean|undefined }) {
   const { data, error } = await supabase.rpc("create_onboarding_case_v2", {
     _existing_person_id: input.personId || null, _given_name: input.firstName, _family_name: input.lastName,
-    _preferred_name: input.preferredName || null, _email: input.email || null, _team_id: input.teamId || null,
+    _preferred_name: input.preferredName || null, _email: input.email || null,_employee_id:input.employeeId||null, _team_id: input.teamId || null,
     _employment_type: input.employmentType, _effective_date: input.startDate, _role_title: input.role || null,
     _location: input.location || null, _supervisor_name: input.supervisorName, _supervisor_email: input.supervisorEmail || null,
-    _workload: null, _priority: input.priority, _notes: input.notes || null, _visa_required: input.visaRequired ?? false,
+    _workload: null, _priority: input.priority, _notes: input.notes || null, _visa_required: input.visaRequired ?? false,_allow_new_despite_match:input.allowNewDespiteMatch??false,
   });
   if (error) { if (error.code === "42501") return { error: "forbidden" as const }; throw new Error(error.message); }
   return { ok: true as const, caseId: (data as any).caseId as string };
@@ -593,60 +568,50 @@ export async function createOffboardingCase(supabase: Db, userId: string, input:
     _priority: input.priority, _notes: input.notes || null,
   });
   if (error) { if (error.code === "42501") return { error: "forbidden" as const }; throw new Error(error.message); }
+  if((data as any)?.error==="offboarding_exists")return {error:"offboarding_exists" as const,caseId:(data as any).caseId as string};
   return { ok: true as const, caseId: (data as any).caseId as string };
 }
 
 function peopleRow(row:any): PeopleRowDto {
   const employments = [...(row.employments ?? [])].sort((a:any,b:any)=>String(b.start_date ?? "").localeCompare(String(a.start_date ?? "")));
-  const e = employments.find((x:any)=>["active","ending","planned"].includes(x.status)) ?? employments[0];
+  const e = employments.find((x:any)=>["active","ending","planned"].includes(x.effective_status??x.status)) ?? employments[0];
   return { personId:row.id, displayName:row.display_name || row.preferred_name || row.full_name,
     givenName:row.given_name, familyName:row.family_name, preferredName:row.preferred_name, email:row.email,
     employmentId:e?.id ?? null, employeeId:e?.employee_id ?? row.employee_id, employmentType:e?.employment_type ?? null,
     role:e?.role_title ?? null, team:e?.teams?.name ?? row.teams?.name ?? "—", teamId:e?.team_id ?? row.team_id,
-    location:e?.location ?? null, status:e?.status ?? "no_employment", startDate:e?.start_date ?? null,
+    location:e?.location ?? null, status:e?.effective_status ?? e?.status ?? "no_employment", startDate:e?.start_date ?? null,
     endDate:e?.end_date ?? null, supervisorName:e?.supervisor_name ?? null };
 }
 
 export async function getPeople(supabase:Db,userId:string):Promise<PeopleRowDto[]|{error:"access_denied"}>{
   if(!await loadIdentity(supabase,userId)) return {error:"access_denied"};
-  const {data,error}=await supabase.from("persons").select("*, teams(name), employments(*, teams(name))").is("archived_at",null).order("full_name");
-  if(error) throw new Error(error.message); return ((data??[]) as any[]).map(peopleRow);
+  const [{data:persons,error},{data:employments},{data:teams}]=await Promise.all([supabase.from("persons").select("*").is("archived_at",null).order("full_name"),supabase.from("employment_effective").select("*"),supabase.from("teams").select("id,name")]);
+  if(error) throw new Error(error.message);const teamNames=new Map(((teams??[]) as any[]).map(t=>[t.id,t.name]));const byPerson=new Map<string,any[]>();for(const e of (employments??[]) as any[]){e.teams={name:teamNames.get(e.team_id)??"—"};byPerson.set(e.person_id,[...(byPerson.get(e.person_id)??[]),e])}return ((persons??[]) as any[]).filter(p=>byPerson.has(p.id)).map(p=>peopleRow({...p,employments:byPerson.get(p.id)}));
 }
 
 export async function getPersonDetail(supabase:Db,userId:string,personId:string):Promise<PersonDetailDto|{error:"access_denied"|"not_found"}>{
   const identity=await loadIdentity(supabase,userId); if(!identity)return {error:"access_denied"};
-  const [{data:person,error},{data:caseRows},{data:profiles}]=await Promise.all([
-    supabase.from("persons").select("*, teams(name), employments(*, teams(name))").eq("id",personId).maybeSingle(),
+  const [{data:person,error},{data:employmentRows},{data:teams},{data:caseRows},{data:profiles}]=await Promise.all([
+    supabase.from("persons").select("*").eq("id",personId).maybeSingle(),
+    supabase.from("employment_effective").select("*").eq("person_id",personId),supabase.from("teams").select("id,name"),
     supabase.from("cases").select("*, persons(full_name,lab_id,team_id,teams(name))").eq("person_id",personId).order("created_at",{ascending:false}),
     supabase.from("profiles").select("id,name")]);
-  if(error)throw new Error(error.message); if(!person)return {error:"not_found"};
-  const names=new Map(((profiles??[]) as any[]).map(x=>[x.id,x.name])); const row=peopleRow(person);
-  return {person:{...row,phone:person.phone??null}, employments:((person.employments??[]) as any[]).map(e=>({id:e.id,employmentType:e.employment_type,employeeId:e.employee_id,role:e.role_title,team:e.teams?.name??"—",location:e.location,status:e.status,startDate:e.start_date,endDate:e.end_date,supervisorName:e.supervisor_name,workload:e.workload,contractType:e.contract_type})), cases:((caseRows??[]) as any[]).map(c=>toCaseDto(c,computeAccess(identity,c),names))};
+  if(error)throw new Error(error.message); if(!person)return {error:"not_found"};if(!(employmentRows??[]).length&&!(caseRows??[]).length)return {error:"access_denied"};const teamNames=new Map(((teams??[]) as any[]).map(t=>[t.id,t.name]));const employmentData=((employmentRows??[]) as any[]).map(e=>({...e,teams:{name:teamNames.get(e.team_id)??"—"}}));const personWithEmployment={...person,employments:employmentData};
+  const names=new Map(((profiles??[]) as any[]).map(x=>[x.id,x.name])); const row=peopleRow(personWithEmployment);
+  return {person:{...row,phone:person.phone??null}, employments:employmentData.map(e=>({id:e.id,employmentType:e.employment_type,employeeId:e.employee_id,role:e.role_title,team:e.teams?.name??"—",location:e.location,status:e.effective_status??e.status,startDate:e.start_date,endDate:e.end_date,supervisorName:e.supervisor_name,workload:e.workload,contractType:e.contract_type})), cases:((caseRows??[]) as any[]).map(c=>toCaseDto(c,computeAccess(identity,c),names))};
+}
+
+export async function findOnboardingCandidates(supabase:Db,userId:string,input:{employeeId?:string|undefined;email?:string|undefined;fullName:string;teamId:string|null}){
+  if(!await loadIdentity(supabase,userId))return {error:"access_denied" as const};
+  const {data,error}=await supabase.rpc("find_onboarding_person_candidates",{_employee_id:input.employeeId||null,_email:input.email||null,_full_name:input.fullName,_team_id:input.teamId});
+  if(error){if(error.code==="42501")return {error:"forbidden" as const};throw new Error(error.message)}
+  return {candidates:((data??[]) as any[]).map(x=>({personId:x.person_id,displayName:x.display_name,email:x.email,employeeId:x.employee_id,matchStrength:x.match_strength,matchReason:x.match_reason,lastEmploymentType:x.last_employment_type,lastTeam:x.last_team,lastEndDate:x.last_end_date}))};
 }
 
 export async function setCaseConfirmation(supabase: Db, userId: string, caseId: string, confirmed: boolean) {
-  const identity = await loadIdentity(supabase, userId);
-  if (!identity || !["admin", "operator", "manager"].includes(identity.role)) {
-    return { error: "forbidden" as const };
-  }
-  const { data: current } = await supabase.from("cases").select("id,case_type,status").eq("id", caseId).maybeSingle();
-  if (!current) return { error: "not_found" as const };
-  const nextStatus = confirmed ? "Confirmed" : "Preparing";
-  const { error } = await supabase.from("cases").update({ status: nextStatus }).eq("id", caseId);
-  if (error) {
-    if (error.code === "42501") return { error: "forbidden" as const };
-    throw new Error(error.message);
-  }
-  await supabase.from("audit_logs").insert({
-    actor_id: userId,
-    entity_type: "case",
-    entity_id: caseId,
-    action: confirmed ? `Confirmed ${String(current.case_type).toLowerCase()}` : "Reopened case",
-    field: "status",
-    previous_value: current.status,
-    new_value: nextStatus,
-    case_id: caseId,
-  });
+  if(!await loadIdentity(supabase,userId))return {error:"forbidden" as const};
+  const {error}=await supabase.rpc("transition_lifecycle_case",{_case_id:caseId,_confirm:confirmed});
+  if(error){if(error.code==="42501")return {error:"forbidden" as const};if(/not found/i.test(error.message))return {error:"not_found" as const};throw new Error(error.message)}
   return { ok: true as const };
 }
 
