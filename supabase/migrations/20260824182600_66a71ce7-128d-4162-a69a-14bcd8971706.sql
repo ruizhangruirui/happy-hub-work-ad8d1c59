@@ -77,6 +77,7 @@ where lower(email) = 'zhangruisomebody@outlook.com'
 -- Keep the create policies explicit and identical for persons and cases.
 drop policy if exists "Operators and up manage persons" on public.persons;
 drop policy if exists "Operators and up can create persons" on public.persons;
+drop policy if exists "Active case creators can create persons" on public.persons;
 create policy "Active case creators can create persons"
   on public.persons for insert to authenticated
   with check (
@@ -89,6 +90,7 @@ create policy "Active case creators can create persons"
   );
 
 drop policy if exists "Operators and up create cases" on public.cases;
+drop policy if exists "Active case creators can create cases" on public.cases;
 create policy "Active case creators can create cases"
   on public.cases for insert to authenticated
   with check (

@@ -123,3 +123,13 @@ Object.assign(zh, {
   "Search":"搜索","Search results":"搜索结果","No results found.":"未找到匹配结果。","Cases":"事项","Tasks":"任务","People":"人员",
   "Template Name":"模板名称","Body":"正文","Saving…":"保存中…","Duplicate":"复制","New Template":"新建模板","Edit Template":"编辑模板"
 });
+
+Object.assign(zh, {
+  "Possible existing person found":"发现可能存在的人员记录",
+  "Existing employee record":"已有员工记录",
+  "Contact HR/Admin to resolve this identity match.":"该身份记录不在您的权限范围内，请联系 HR 或管理员处理。",
+  "Strong identifier match":"工号或邮箱强匹配",
+  "Name-only warning; never auto-merged":"仅姓名相似，不会自动合并",
+  "Use Existing Person":"使用已有人员记录",
+  "Create New Person Anyway":"仍然创建新人员"
+});

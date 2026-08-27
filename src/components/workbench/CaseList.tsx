@@ -205,7 +205,6 @@ function CreateCaseModal({
     leavingReason: "",
     employeeId:"",
     personId:"",
-    allowNewDespiteMatch:false,
   });
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -228,7 +227,6 @@ function CreateCaseModal({
           email: form.email.trim() || undefined,
           employeeId:form.employeeId.trim()||undefined,
           personId:form.personId||undefined,
-          allowNewDespiteMatch:form.allowNewDespiteMatch,
           teamId: form.teamId || null,
           caseType: "onboarding",
           employmentType: form.employmentType as (typeof EMPLOYMENT_TYPES)[number],
@@ -280,7 +278,7 @@ function CreateCaseModal({
           <input type="email" value={form.email} onChange={e=>{set("email")(e);setDuplicateResolved(false)}} maxLength={320} />
         </label>
         <label>{t("Employee ID")} ({t("Optional")})<input value={form.employeeId} onChange={e=>{set("employeeId")(e);setDuplicateResolved(false)}} maxLength={80}/></label>
-        {candidates.length?<div className="panel"><b>{t("Possible existing person found")}</b>{candidates.map(c=><div className="orgrow" key={c.personId}><div><b>{c.displayName}</b><span>{c.lastEmploymentType??"—"} · {c.lastTeam??"—"} · {c.lastEndDate??"—"}</span><small>{t(c.matchStrength==="strong"?"Strong identifier match":"Name-only warning; never auto-merged")}</small></div><button type="button" className="secondary" onClick={()=>{setForm(f=>({...f,personId:c.personId,employeeId:c.employeeId??f.employeeId,allowNewDespiteMatch:false}));setCandidates([]);setDuplicateResolved(true)}}>{t("Use Existing Person")}</button></div>)}{candidates.every(c=>c.matchStrength==="warning")?<button type="button" className="textbutton" onClick={()=>{setForm(f=>({...f,personId:"",allowNewDespiteMatch:true}));setCandidates([]);setDuplicateResolved(true)}}>{t("Create New Person Anyway")}</button>:null}</div>:null}
+        {candidates.length?<div className="panel"><b>{t("Possible existing person found")}</b>{candidates.map((c,index)=><div className="orgrow" key={c.personId??`restricted-${index}`}><div><b>{t(c.accessible?c.displayName:"Existing employee record")}</b>{c.accessible?<span>{c.lastEmploymentType??"—"} · {c.lastTeam??"—"} · {c.lastEndDate??"—"}</span>:<span>{t("Contact HR/Admin to resolve this identity match.")}</span>}<small>{t(c.matchStrength==="strong"?"Strong identifier match":"Name-only warning; never auto-merged")}</small></div>{c.accessible&&c.personId?<button type="button" className="secondary" onClick={()=>{setForm(f=>({...f,personId:c.personId??"",employeeId:c.employeeId??f.employeeId}));setCandidates([]);setDuplicateResolved(true)}}>{t("Use Existing Person")}</button>:null}</div>)}{candidates.every(c=>c.matchStrength==="warning"&&c.accessible)?<button type="button" className="textbutton" onClick={()=>{setForm(f=>({...f,personId:""}));setCandidates([]);setDuplicateResolved(true)}}>{t("Create New Person Anyway")}</button>:null}</div>:null}
         <div className="two">
           <label>
             {t("TEAM")}

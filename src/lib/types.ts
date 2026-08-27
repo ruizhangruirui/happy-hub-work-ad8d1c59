@@ -160,7 +160,7 @@ export interface TemplateDto {
 }
 
 export interface PeopleRowDto { personId:string;displayName:string;givenName:string|null;familyName:string|null;preferredName:string|null;email:string|null;employmentId:string|null;employeeId:string|null;employmentType:string|null;role:string|null;team:string;teamId:string|null;location:string|null;status:string;startDate:string|null;endDate:string|null;supervisorName:string|null; }
-export interface PersonCandidateDto {personId:string;displayName:string;email:string|null;employeeId:string|null;matchStrength:"strong"|"warning";matchReason:"employee_id"|"email"|"name";lastEmploymentType:string|null;lastTeam:string|null;lastEndDate:string|null}
+export interface PersonCandidateDto {personId:string|null;displayName:string;email:string|null;employeeId:string|null;matchStrength:"strong"|"warning";matchReason:"employee_id"|"email"|"name"|"restricted";lastEmploymentType:string|null;lastTeam:string|null;lastEndDate:string|null;accessible:boolean}
 export interface PersonDetailDto { person:PeopleRowDto & {phone:string|null}; employments:Array<{id:string;employmentType:string;employeeId:string|null;role:string|null;team:string;location:string|null;status:string;startDate:string|null;endDate:string|null;supervisorName:string|null;workload:number|null;contractType:string|null}>; cases:CaseDto[]; }
 
 export interface RosterPersonDto {

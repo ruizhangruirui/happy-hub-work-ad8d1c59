@@ -121,7 +121,7 @@ grant execute on function public.find_onboarding_person_candidates(text,text,tex
 
 -- Replace creation RPC: scope checked internally; strong identifier matches must reuse Person.
 drop function public.create_onboarding_case_v2(uuid,text,text,text,text,text,uuid,text,text,text,text,date,integer,text,text,boolean);
-create function public.create_onboarding_case_v2(_existing_person_id uuid,_given_name text,_family_name text,_preferred_name text,_email text,_employee_id text,_employment_type text,_team_id uuid,_role_title text,_location text,_supervisor_name text,_supervisor_email text,_effective_date date,_workload integer,_priority text,_notes text,_visa_required boolean,_allow_new_despite_match boolean default false)
+create function public.create_onboarding_case_v2(_existing_person_id uuid,_given_name text,_family_name text,_preferred_name text,_email text,_employee_id text,_employment_type text,_team_id uuid,_role_title text,_location text,_supervisor_name text,_supervisor_email text,_effective_date date,_workload integer,_priority text,_notes text,_visa_required boolean)
 returns jsonb language plpgsql security definer set search_path=public as $$
 declare person_id uuid;employment_id uuid;case_id uuid;candidate uuid;
 begin
@@ -145,7 +145,7 @@ begin
   insert into public.audit_logs(actor_id,entity_type,entity_id,action,case_id,metadata) values(auth.uid(),'case',case_id::text,case when _existing_person_id is null then 'Created onboarding with new person' else 'Reused person for new employment' end,case_id,jsonb_build_object('personId',person_id,'employmentId',employment_id));
   return jsonb_build_object('caseId',case_id,'personId',person_id,'employmentId',employment_id);
 end $$;
-grant execute on function public.create_onboarding_case_v2(uuid,text,text,text,text,text,text,uuid,text,text,text,text,date,integer,text,text,boolean,boolean) to authenticated;
+grant execute on function public.create_onboarding_case_v2(uuid,text,text,text,text,text,text,uuid,text,text,text,text,date,integer,text,text,boolean) to authenticated;
 
 create unique index if not exists cases_one_open_onboarding_per_employment on public.cases(employment_id) where case_type='Onboarding' and status not in('Cancelled');
 create unique index if not exists cases_one_open_offboarding_per_employment on public.cases(employment_id) where case_type='Offboarding' and status not in('Cancelled');
