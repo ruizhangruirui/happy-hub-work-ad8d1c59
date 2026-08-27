@@ -1619,3 +1619,206 @@ button { cursor: pointer; }
   .fields { grid-template-columns: 1fr; }
 }
 .casetable .row.lifecycle-success{background:color-mix(in srgb,#e8f7ef 55%,white)}
+.casetable .row.lifecycle-success {
+  background: color-mix(in srgb, #e8f7ef 55%, white);
+}
+
+/* Phase 2 task collaboration */
+.tasktools,
+.taskcontrols,
+.tasktitleline,
+.taskteamhead,
+.taskviewtabs,
+.teamchoices {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.taskteamgroup {
+  border-top: 1px solid var(--line);
+}
+.taskteamhead {
+  justify-content: space-between;
+  padding: 13px 16px;
+  background: #f7f8fb;
+}
+.taskteamhead b {
+  font-size: 13px;
+}
+.taskteamhead span {
+  color: var(--ink-sub);
+  font-size: 11px;
+}
+.taskcollab {
+  align-items: flex-start;
+}
+.taskcollab .taskmain p {
+  margin: 4px 0;
+  color: var(--ink-sub);
+  font-size: 12px;
+}
+.taskcollab .taskmain em {
+  display: block;
+  margin-top: 5px;
+  color: var(--ink-sub);
+  font-size: 11px;
+}
+.tasktitleline b {
+  flex: 0 1 auto;
+}
+.taskcontrols {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 420px;
+}
+.taskcontrols select {
+  max-width: 165px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 8px;
+  background: #fff;
+  font-size: 11.5px;
+}
+.taskcomment {
+  margin-top: 9px;
+  padding: 9px 11px;
+  border-left: 3px solid #d8def8;
+  border-radius: 0 8px 8px 0;
+  background: #f8f9fe;
+}
+.taskcomment b,
+.taskcomment small {
+  display: inline;
+  margin-right: 7px;
+  font-size: 10.5px;
+}
+.taskcomment small {
+  color: var(--ink-faint);
+}
+.taskcomment p {
+  color: var(--ink) !important;
+}
+.taskcommentform {
+  display: flex;
+  gap: 7px;
+  margin-top: 9px;
+}
+.taskcommentform input {
+  flex: 1;
+  min-width: 180px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+}
+.taskviewtabs {
+  padding: 0 18px 12px;
+  flex-wrap: wrap;
+}
+.taskviewtabs button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: #fff;
+  color: var(--ink-sub);
+  font-size: 11px;
+}
+.taskviewtabs button.active {
+  border-color: #b8c1f3;
+  background: #eef1ff;
+  color: var(--brand);
+  font-weight: 700;
+}
+.teamchoices {
+  flex-wrap: wrap;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 11px;
+}
+.teamchoices legend {
+  padding: 0 5px;
+  color: var(--ink-sub);
+  font-size: 11px;
+  font-weight: 700;
+}
+.teamchoices label {
+  flex-direction: row !important;
+  align-items: center;
+}
+.teamchoices small {
+  flex-basis: 100%;
+  color: var(--ink-faint);
+}
+.checklistrules {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.ruletoolbar,
+.panelactions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.templatedescription {
+  margin: 0;
+  padding: 0 16px;
+  color: var(--ink-sub);
+  font-size: 12px;
+}
+.templateinactive {
+  opacity: 0.72;
+}
+.rulegrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 16px;
+}
+.rulecard {
+  display: flex;
+  min-height: 112px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #fff;
+  text-align: left;
+}
+.rulecard:hover:not(:disabled) {
+  border-color: #b8c1f3;
+  box-shadow: 0 4px 14px rgba(74, 92, 212, 0.08);
+}
+.rulecard.inactive {
+  opacity: 0.55;
+}
+.rulecard > span {
+  display: flex;
+  gap: 5px;
+}
+.rulecard b {
+  font-size: 13px;
+}
+.rulecard small {
+  color: var(--ink-sub);
+}
+@media (max-width: 900px) {
+  .rulegrid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .taskcollab {
+    flex-direction: column;
+  }
+  .taskcontrols {
+    justify-content: flex-start;
+    max-width: none;
+  }
+}
+@media (max-width: 620px) {
+  .rulegrid {
+    grid-template-columns: 1fr;
+  }
+}

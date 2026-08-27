@@ -19,6 +19,8 @@ import type {
   ExternalRequestDto,
   PeopleRowDto,
   PersonDetailDto,
+  ChecklistTemplateDto,
+  ChecklistTemplateItemDto,
 } from "./types";
 
 export type Db = SupabaseClient<any, any, any>;
@@ -157,7 +159,7 @@ function toTaskDto(
     status: t.status,
     email: t.task_type === "Email",
     ownerId: t.owner_id,
-    ownerName: t.owner_id ? (nameOf.get(t.owner_id) ?? "") : "",
+    ownerName: t.owner_name ?? (t.owner_id ? (nameOf.get(t.owner_id) ?? "") : ""),
     checklistItemId: t.checklist_item_id,
     completedAt: t.completed_at,
     assigneeRole: t.assignee_role ?? null,
@@ -165,7 +167,16 @@ function toTaskDto(
     description: t.description ?? null,
     ownerTeam: t.owner_team ?? "HR",
     mandatory: t.mandatory !== false,
-    completedByName: t.completed_by ? (nameOf.get(t.completed_by) ?? null) : null,
+    completedByName:
+      t.completed_by_name ?? (t.completed_by ? (nameOf.get(t.completed_by) ?? null) : null),
+    personTeam: t.person_team ?? "—",
+    startDate: t.start_date ?? null,
+    contractEndDate: t.contract_end_date ?? null,
+    lastWorkingDay: t.last_working_day ?? null,
+    templateItemId: t.template_item_id ?? null,
+    source: t.source === "template" ? "template" : "manual",
+    notApplicableReason: t.not_applicable_reason ?? null,
+    canEdit: t.can_edit !== false,
   };
 }
 
@@ -176,7 +187,7 @@ export async function getWorkbenchData(
   const identity = await loadIdentity(supabase, userId);
   if (!identity) return { error: "access_denied" };
 
-  const [casesRes, profilesRes, rolesRes, scopesRes, labsRes, teamsRes, tasksRes] =
+  const [casesRes, profilesRes, rolesRes, scopesRes, labsRes, teamsRes, tasksRes, operationalRes] =
     await Promise.all([
       supabase
         .from("cases")
@@ -188,10 +199,8 @@ export async function getWorkbenchData(
       supabase.from("user_scopes").select("user_id,scope_type,lab_id,team_id"),
       supabase.from("labs").select("id,name,status").order("name"),
       supabase.from("teams").select("id,name,lab_id,status").order("name"),
-      supabase
-        .from("tasks")
-        .select("*, cases(case_type, persons(full_name))")
-        .order("due_date", { ascending: true, nullsFirst: false }),
+      supabase.rpc("list_operational_tasks", { _case_id: null }),
+      supabase.from("user_operational_teams").select("user_id,owner_team"),
     ]);
   if (casesRes.error) throw new Error(casesRes.error.message);
 
@@ -209,6 +218,14 @@ export async function getWorkbenchData(
   const scopesOf = new Map<string, any[]>();
   for (const s of (scopesRes.data ?? []) as any[]) {
     scopesOf.set(s.user_id, [...(scopesOf.get(s.user_id) ?? []), s]);
+  }
+  const operationalTeamsOf = new Map<string, Array<"HR" | "IT" | "Admin">>();
+  for (const membership of (operationalRes.data ?? []) as any[]) {
+    const team = membership.owner_team as "HR" | "IT" | "Admin";
+    operationalTeamsOf.set(membership.user_id, [
+      ...(operationalTeamsOf.get(membership.user_id) ?? []),
+      team,
+    ]);
   }
 
   const caseRows = (casesRes.data ?? []) as any[];
@@ -235,6 +252,7 @@ export async function getWorkbenchData(
     role: ROLE_LABEL[roleOf.get(p.id) ?? "viewer"] ?? "Viewer",
     status: p.status,
     scopes: (scopesOf.get(p.id) ?? []).map((s: any) => scopeLabel(s, labNames, teamNames)),
+    operationalTeams: operationalTeamsOf.get(p.id) ?? [],
   }));
 
   const cases: CaseDto[] = caseRows.map((row) =>
@@ -248,10 +266,10 @@ export async function getWorkbenchData(
     toTaskDto(
       t,
       nameOf,
-      t.cases?.persons?.full_name ?? "",
-      String(t.cases?.case_type).toLowerCase() === "onboarding"
+      t.person_name ?? "",
+      String(t.case_type).toLowerCase() === "onboarding"
         ? "Onboarding"
-        : String(t.cases?.case_type).toLowerCase() === "offboarding"
+        : String(t.case_type).toLowerCase() === "offboarding"
           ? "Offboarding"
           : null,
     ),
@@ -264,6 +282,7 @@ export async function getWorkbenchData(
     title: identity.title,
     role: ROLE_LABEL[identity.role] ?? "Viewer",
     scopes: identity.scopes.map((s) => scopeLabel(s, labNames, teamNames)),
+    operationalTeams: operationalTeamsOf.get(userId) ?? [],
   };
 
   return {
@@ -294,7 +313,7 @@ export async function getCaseDetail(
 ): Promise<CaseDetailDto | { error: "access_denied" | "not_found" }> {
   const identity = await loadIdentity(supabase, userId);
   if (!identity) return { error: "access_denied" };
-  const { data: row, error } = await supabase
+  const { data: fullRow, error } = await supabase
     .from("cases")
     .select(
       "*, persons(full_name, email, employee_id, phone, lab_id, team_id, teams(name), manager:manager_id(full_name))",
@@ -302,7 +321,18 @@ export async function getCaseDetail(
     .eq("id", caseId)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  if (!row) return { error: "not_found" };
+  let operationalOnly = false;
+  let row: any = fullRow;
+  if (!row) {
+    const { data: summary, error: summaryError } = await supabase.rpc(
+      "get_operational_case_summary",
+      { _case_id: caseId },
+    );
+    if (summaryError) throw new Error(summaryError.message);
+    if (!summary) return { error: "not_found" };
+    row = summary;
+    operationalOnly = true;
+  }
   const r = row as any;
 
   const [
@@ -314,6 +344,7 @@ export async function getCaseDetail(
     workflowRes,
     externalRes,
     tasksRes,
+    operationalTeamsRes,
   ] = await Promise.all([
     supabase
       .from("case_members")
@@ -339,19 +370,18 @@ export async function getCaseDetail(
       .select("*")
       .eq("case_id", caseId)
       .order("created_at", { ascending: false }),
-    supabase
-      .from("tasks")
-      .select("*")
-      .eq("case_id", caseId)
-      .order("due_date", { ascending: true, nullsFirst: false }),
+    supabase.rpc("list_operational_tasks", { _case_id: caseId }),
+    supabase.from("user_operational_teams").select("user_id,owner_team"),
   ]);
 
   const myMembership = ((membersRes.data ?? []) as any[]).find((m) => m.user_id === userId);
-  const access = computeAccess(identity, r, myMembership?.access_level);
+  const access = operationalOnly
+    ? "Scoped"
+    : computeAccess(identity, r, myMembership?.access_level);
   const nameOf = new Map<string, string>(
     ((profilesRes.data ?? []) as any[]).map((p) => [p.id, p.name]),
   );
-  const canSeeNotes = access === "Owner" || access === "Collaborator";
+  const canSeeNotes = !operationalOnly && (access === "Owner" || access === "Collaborator");
   const person = r.persons ?? {};
 
   const members: MemberDto[] = ((membersRes.data ?? []) as any[]).map((m) => ({
@@ -429,12 +459,40 @@ export async function getCaseDetail(
     respondedAt: x.responded_at,
   }));
   const tasks: TaskDto[] = ((tasksRes.data ?? []) as any[]).map((t) =>
-    toTaskDto(t, nameOf, person.full_name ?? "", r.case_type),
+    toTaskDto(t, nameOf, t.person_name ?? person.full_name ?? "", t.case_type ?? r.case_type),
   );
+
+  const taskIds = tasks.map((task) => task.id);
+  const { data: commentRows } = taskIds.length
+    ? await supabase
+        .from("task_comments")
+        .select("id,task_id,author_id,body,created_at")
+        .in("task_id", taskIds)
+        .order("created_at", { ascending: true })
+    : { data: [] as any[] };
+  const operationalTeamsOf = new Map<string, string[]>();
+  for (const membership of (operationalTeamsRes.data ?? []) as any[]) {
+    operationalTeamsOf.set(membership.user_id, [
+      ...(operationalTeamsOf.get(membership.user_id) ?? []),
+      membership.owner_team,
+    ]);
+  }
+  const taskComments = ((commentRows ?? []) as any[]).map((comment) => ({
+    id: comment.id,
+    taskId: comment.task_id,
+    authorName: nameOf.get(comment.author_id) ?? "User",
+    authorTeam: operationalTeamsOf.get(comment.author_id)?.join(" / ") ?? null,
+    body: comment.body,
+    at: comment.created_at,
+  }));
 
   const assignableUsers = ((profilesRes.data ?? []) as any[])
     .filter((p) => p.status === "Active")
-    .map((p) => ({ id: p.id, name: p.name }));
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      operationalTeams: operationalTeamsOf.get(p.id) ?? [],
+    }));
 
   return {
     case: {
@@ -455,6 +513,7 @@ export async function getCaseDetail(
     files,
     workflow,
     tasks,
+    taskComments,
     externalRequests,
     assignableUsers,
   };
@@ -557,37 +616,17 @@ export async function removeMember(supabase: Db, userId: string, memberId: strin
 
 export async function assignTask(
   supabase: Db,
-  userId: string,
+  _userId: string,
   input: { taskId: string; ownerId: string | null },
 ) {
-  const { data: task } = await supabase
-    .from("tasks")
-    .select("id,case_id,title")
-    .eq("id", input.taskId)
-    .maybeSingle();
-  if (!task) return { error: "not_found" as const };
-  const { error } = await supabase
-    .from("tasks")
-    .update({ owner_id: input.ownerId })
-    .eq("id", input.taskId);
+  const { error } = await supabase.rpc("assign_task", {
+    _task_id: input.taskId,
+    _assignee_id: input.ownerId,
+  });
   if (error) {
     if (error.code === "42501") return { error: "forbidden" as const };
     throw new Error(error.message);
   }
-  const { data: assignee } = input.ownerId
-    ? await supabase.from("profiles").select("name").eq("id", input.ownerId).maybeSingle()
-    : { data: null };
-  await supabase.from("audit_logs").insert({
-    actor_id: userId,
-    entity_type: "task",
-    entity_id: input.taskId,
-    action: input.ownerId
-      ? `Assigned "${task.title}" to ${assignee?.name ?? "user"}`
-      : `Unassigned "${task.title}"`,
-    field: "owner_id",
-    new_value: input.ownerId,
-    case_id: task.case_id,
-  });
   return { ok: true as const };
 }
 
@@ -597,36 +636,59 @@ export async function createTask(
   input: {
     caseId: string;
     title: string;
+    description?: string | null | undefined;
     dueDate?: string | undefined;
     priority: string;
     ownerId?: string | null | undefined;
+    ownerTeam?: "HR" | "IT" | "Admin" | undefined;
+    mandatory?: boolean | undefined;
   },
 ) {
-  const { data, error } = await supabase
-    .from("tasks")
-    .insert({
-      case_id: input.caseId,
-      title: input.title,
-      task_type: "Task",
-      status: "Not Started",
-      priority: input.priority,
-      due_date: input.dueDate || null,
-      owner_id: input.ownerId ?? userId,
-    })
-    .select("id")
-    .single();
+  const { data, error } = await supabase.rpc("create_manual_task", {
+    _case_id: input.caseId,
+    _title: input.title,
+    _description: input.description || null,
+    _owner_team: input.ownerTeam ?? "HR",
+    _assignee_id: input.ownerId ?? null,
+    _mandatory: input.mandatory ?? true,
+    _due_date: input.dueDate || null,
+    _priority: input.priority,
+  });
   if (error) {
     if (error.code === "42501") return { error: "forbidden" as const };
     throw new Error(error.message);
   }
-  await supabase.from("audit_logs").insert({
-    actor_id: userId,
-    entity_type: "task",
-    entity_id: data.id,
-    action: `Created task "${input.title}"`,
-    case_id: input.caseId,
+  return { ok: true as const, taskId: data as string };
+}
+
+export async function addTaskComment(
+  supabase: Db,
+  userId: string,
+  input: { taskId: string; body: string },
+) {
+  if (!(await loadIdentity(supabase, userId))) return { error: "access_denied" as const };
+  const { data, error } = await supabase.rpc("add_task_comment", {
+    _task_id: input.taskId,
+    _body: input.body,
   });
-  return { ok: true as const, taskId: data.id };
+  if (error) {
+    if (error.code === "42501") return { error: "forbidden" as const };
+    throw new Error(error.message);
+  }
+  return { ok: true as const, commentId: data as string };
+}
+
+export async function syncCaseTasks(supabase: Db, userId: string, caseId: string) {
+  if (!(await loadIdentity(supabase, userId))) return { error: "access_denied" as const };
+  const { data, error } = await supabase.rpc("sync_case_tasks", {
+    _case_id: caseId,
+    _reason: "Manual synchronization",
+  });
+  if (error) {
+    if (error.code === "42501") return { error: "forbidden" as const };
+    throw new Error(error.message);
+  }
+  return { ok: true as const, result: data };
 }
 
 export async function toggleTask(
@@ -1042,6 +1104,7 @@ export interface SaveUserInput {
   scopeType?: "all_organization" | "lab" | "team" | "assigned_cases" | undefined;
   labId?: string | null | undefined;
   teamId?: string | null | undefined;
+  operationalTeams?: Array<"HR" | "IT" | "Admin"> | undefined;
 }
 
 function scopeRow(input: SaveUserInput, userId: string) {
@@ -1057,6 +1120,7 @@ export async function saveUser(supabase: Db, userId: string, input: SaveUserInpu
   const { data: isAdmin } = await supabase.rpc("has_role", { _user_id: userId, _role: "admin" });
   if (!isAdmin) return { error: "forbidden" as const };
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const adminDb = supabaseAdmin as any;
 
   if (input.id) {
     const { error } = await supabaseAdmin
@@ -1068,6 +1132,15 @@ export async function saveUser(supabase: Db, userId: string, input: SaveUserInpu
     await supabaseAdmin.from("user_roles").insert({ user_id: input.id, role: input.role });
     await supabaseAdmin.from("user_scopes").delete().eq("user_id", input.id);
     if (input.scopeType) await supabaseAdmin.from("user_scopes").insert(scopeRow(input, input.id));
+    await adminDb.from("user_operational_teams").delete().eq("user_id", input.id);
+    if (input.operationalTeams?.length) {
+      await adminDb.from("user_operational_teams").insert(
+        input.operationalTeams.map((ownerTeam: "HR" | "IT" | "Admin") => ({
+          user_id: input.id!,
+          owner_team: ownerTeam,
+        })),
+      );
+    }
     await supabase.from("audit_logs").insert({
       actor_id: userId,
       entity_type: "user",
@@ -1106,6 +1179,14 @@ export async function saveUser(supabase: Db, userId: string, input: SaveUserInpu
   }
   await supabaseAdmin.from("user_roles").insert({ user_id: newId, role: input.role });
   if (input.scopeType) await supabaseAdmin.from("user_scopes").insert(scopeRow(input, newId));
+  if (input.operationalTeams?.length) {
+    await adminDb.from("user_operational_teams").insert(
+      input.operationalTeams.map((ownerTeam: "HR" | "IT" | "Admin") => ({
+        user_id: newId,
+        owner_team: ownerTeam,
+      })),
+    );
+  }
   await supabase.from("audit_logs").insert({
     actor_id: userId,
     entity_type: "user",
@@ -1165,6 +1246,191 @@ export async function listTemplates(
       })),
     })),
   };
+}
+
+export async function listChecklistTemplateItems(
+  supabase: Db,
+  userId: string,
+): Promise<
+  | { items: ChecklistTemplateItemDto[]; templates: ChecklistTemplateDto[] }
+  | { error: "access_denied" }
+> {
+  if (!(await loadIdentity(supabase, userId))) return { error: "access_denied" };
+  const [itemsResult, templatesResult] = await Promise.all([
+    supabase
+      .from("checklist_template_items")
+      .select("*, checklist_templates(name,version)")
+      .order("case_type")
+      .order("sort_order"),
+    supabase.from("checklist_templates").select("*").order("case_type").order("name"),
+  ]);
+  if (itemsResult.error) throw new Error(itemsResult.error.message);
+  if (templatesResult.error) throw new Error(templatesResult.error.message);
+  return {
+    templates: ((templatesResult.data ?? []) as any[]).map((template) => ({
+      id: template.id,
+      key: template.template_key,
+      name: template.name,
+      caseType: template.case_type,
+      description: template.description ?? null,
+      active: template.active !== false,
+      version: Number(template.version ?? 1),
+    })),
+    items: ((itemsResult.data ?? []) as any[]).map((item) => ({
+      id: item.id,
+      templateId: item.template_id,
+      templateName: item.checklist_templates?.name ?? "Checklist",
+      templateVersion: Number(item.checklist_templates?.version ?? 1),
+      key: item.template_key,
+      caseType: item.case_type,
+      title: item.title,
+      description: item.description ?? null,
+      ownerTeam: item.owner_team,
+      mandatory: item.mandatory !== false,
+      active: item.active !== false && item.enabled !== false,
+      employmentTypes: item.applicable_employment_types ?? [],
+      leavingTypes: item.applicable_leaving_types ?? [],
+      leavingReasons: item.applicable_leaving_reasons ?? [],
+      dueReference: item.due_reference ?? "manual",
+      dueOffsetDays: Number(item.due_offset_days ?? 0),
+      sortOrder: Number(item.sort_order ?? 0),
+    })),
+  };
+}
+
+export async function saveChecklistTemplateItem(
+  supabase: Db,
+  userId: string,
+  input: {
+    id?: string | undefined;
+    templateId: string;
+    caseType: "Onboarding" | "Offboarding";
+    title: string;
+    description?: string | null | undefined;
+    ownerTeam: "HR" | "IT" | "Admin";
+    mandatory: boolean;
+    active: boolean;
+    employmentTypes: string[];
+    leavingTypes: string[];
+    leavingReasons: string[];
+    dueReference: "start_date" | "contract_end_date" | "last_working_day" | "manual";
+    dueOffsetDays: number;
+    sortOrder: number;
+  },
+) {
+  const identity = await loadIdentity(supabase, userId);
+  if (!identity || !(identity.role === "admin" || identity.role === "operator")) {
+    const { data: hr } = await supabase.rpc("is_hr_user", { _user_id: userId });
+    if (!hr) return { error: "forbidden" as const };
+  }
+  const { data: template, error: templateError } = await supabase
+    .from("checklist_templates")
+    .select("id,case_type")
+    .eq("id", input.templateId)
+    .maybeSingle();
+  if (templateError) throw new Error(templateError.message);
+  if (!template || template.case_type !== input.caseType) return { error: "not_found" as const };
+  const payload = {
+    title: input.title.trim(),
+    description: input.description?.trim() || null,
+    owner_team: input.ownerTeam,
+    mandatory: input.mandatory,
+    active: input.active,
+    enabled: input.active,
+    applicable_employment_types: input.employmentTypes,
+    applicable_leaving_types: input.leavingTypes,
+    applicable_leaving_reasons: input.leavingReasons,
+    due_reference: input.dueReference,
+    due_offset_days: input.dueOffsetDays,
+    sort_order: input.sortOrder,
+    updated_at: new Date().toISOString(),
+  };
+  const operation = input.id
+    ? supabase
+        .from("checklist_template_items")
+        .update(payload)
+        .eq("id", input.id)
+        .eq("template_id", input.templateId)
+    : supabase.from("checklist_template_items").insert({
+        ...payload,
+        template_id: input.templateId,
+        template_key: `custom_${crypto.randomUUID().replaceAll("-", "")}`,
+        case_type: input.caseType,
+        due_rule: "Manual",
+      });
+  const { error } = await operation;
+  if (error) {
+    if (error.code === "42501") return { error: "forbidden" as const };
+    throw new Error(error.message);
+  }
+  await supabase
+    .from("checklist_templates")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", input.templateId);
+  return { ok: true as const };
+}
+
+export async function saveChecklistTemplate(
+  supabase: Db,
+  userId: string,
+  input: {
+    id?: string | undefined;
+    name: string;
+    description?: string | null | undefined;
+    caseType: "Onboarding" | "Offboarding";
+    active: boolean;
+  },
+) {
+  const identity = await loadIdentity(supabase, userId);
+  if (!identity || !(identity.role === "admin" || identity.role === "operator")) {
+    const { data: hr } = await supabase.rpc("is_hr_user", { _user_id: userId });
+    if (!hr) return { error: "forbidden" as const };
+  }
+  const payload = {
+    name: input.name.trim(),
+    description: input.description?.trim() || null,
+    active: input.active,
+    updated_at: new Date().toISOString(),
+  };
+  if (input.id) {
+    const { data: existing, error: lookupError } = await supabase
+      .from("checklist_templates")
+      .select("id,case_type,version")
+      .eq("id", input.id)
+      .maybeSingle();
+    if (lookupError) throw new Error(lookupError.message);
+    if (!existing || existing.case_type !== input.caseType) return { error: "not_found" as const };
+    const { error } = await supabase
+      .from("checklist_templates")
+      .update({ ...payload, version: Number(existing.version ?? 1) + 1 })
+      .eq("id", input.id);
+    if (error) {
+      if (error.code === "42501") return { error: "forbidden" as const };
+      throw new Error(error.message);
+    }
+    return { ok: true as const, id: input.id };
+  }
+  const slug =
+    input.name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "") || "checklist";
+  const { data, error } = await supabase
+    .from("checklist_templates")
+    .insert({
+      ...payload,
+      template_key: `${slug}_${crypto.randomUUID().slice(0, 8)}`,
+      case_type: input.caseType,
+      version: 1,
+    })
+    .select("id")
+    .single();
+  if (error) {
+    if (error.code === "42501") return { error: "forbidden" as const };
+    throw new Error(error.message);
+  }
+  return { ok: true as const, id: data.id as string };
 }
 
 export async function listPublishedTemplates(supabase: Db, userId: string) {

@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier -- legacy compact translation catalog */
 export const zh: Record<string,string> = {
   "HOME":"首页","My Work":"我的工作","OPERATIONS":"运营管理","Onboarding":"入职管理","Offboarding":"离职管理","COMMUNICATION":"沟通管理","Email Center":"邮件中心","ADMIN":"系统管理","Template Manager":"模板管理","Settings":"设置","Need help?":"需要帮助？","Open support center":"打开支持中心","Search people, cases or tasks…":"搜索人员、事项或任务…","Administrator":"管理员","My Profile":"我的资料","My Signature":"我的签名","Outlook Settings":"Outlook 设置","Preferences":"偏好设置","Log out":"退出登录",
   "MONDAY, 24 AUGUST 2026":"2026年8月24日，星期一","Good afternoon, Rui":"下午好，Rui","Here’s what needs your attention today.":"以下是今天需要您关注的事项。","Quick Action":"快速操作","New Onboarding":"新建入职","New Offboarding":"新建离职","Compose Email":"撰写邮件","Import Excel":"导入 Excel","My Tasks":"我的任务","Assigned to you":"分配给您的工作","Due Soon":"即将到期","Next 7 days":"未来 7 天","Waiting":"等待中","Needs follow-up":"需要跟进","Completed Today":"今日完成","Great progress":"进展顺利","Work assigned to you":"分配给您的工作","View all":"查看全部","View calendar":"查看日历","Upcoming":"近期事项","Key people events":"重要人员事件","Recent Cases":"最近事项","Recently viewed and updated":"最近查看及更新","View all cases":"查看全部事项",
@@ -132,4 +133,20 @@ Object.assign(zh, {
   "Name-only warning; never auto-merged":"仅姓名相似，不会自动合并",
   "Use Existing Person":"使用已有人员记录",
   "Create New Person Anyway":"仍然创建新人员"
+});
+
+
+Object.assign(zh, {
+  "Checklist Rules":"清单规则","Functional Teams":"职能团队","Functional team membership controls task access on the server.":"职能团队成员关系由服务器用于控制任务权限。",
+  "Assigned to Me":"分配给我","My Team":"我的团队","Shared Case · Team-owned Tasks":"共享事项 · 团队负责的任务","Sync Tasks":"同步任务","Tasks synchronized":"任务已同步",
+  "Mandatory":"必填","mandatory":"必填","Comment":"评论","Not Applicable":"不适用","Not scheduled":"待排期","Reason required":"请填写不适用原因","Add a progress note…":"添加进度说明……",
+  "Manual tasks are never changed by checklist synchronization.":"手动任务不会被清单同步修改。","Task Name":"任务名称","Owner Team":"负责团队","Assigned User":"被分配人",
+  "Template snapshot safety":"模板快照安全","Template changes apply to newly generated or explicitly synchronized cases. Completed historical tasks are never rewritten.":"模板变更仅适用于新生成或明确同步的事项，已完成的历史任务不会被改写。",
+  "active rules":"条启用规则","Edit Checklist Rule":"编辑清单规则","Due reference":"到期日基准","Offset days":"偏移天数","Sort order":"排序",
+  "Employment type codes":"用工类型代码","Leaving type codes":"离职类型代码","Manual / not scheduled":"手动设置 / 待排期","mandatory tasks completed":"项必填任务已完成"
+});
+
+Object.assign(zh, {
+  "Create Checklist Template":"创建清单模板","Edit Checklist Template":"编辑清单模板","Edit Template":"编辑模板","Add Rule":"新增规则","Add Checklist Rule":"新增清单规则",
+  "Case Type":"事项类型","No rules yet. Add the first checklist item.":"暂无规则，请添加第一项清单任务。","Leaving reason codes":"离职原因代码","Leave blank to apply to all reasons":"留空表示适用于所有离职原因"
 });

@@ -42,6 +42,7 @@ export function WorkPage() {
   });
   const callToggle = useServerFn(toggleTaskFn);
   const [quickOpen, setQuickOpen] = useState(false);
+  const [taskView, setTaskView] = useState<"assigned" | "team" | "due" | "completed">("assigned");
 
   const derived = useMemo(() => {
     if (!data || "error" in data) return null;
@@ -56,7 +57,9 @@ export function WorkPage() {
       .filter((c) => c.caseType === "Onboarding" && c.startDate >= today)
       .sort((a, b) => a.startDate.localeCompare(b.startDate))
       .slice(0, 5);
-    return { open, overdue, dueSoon, waiting, completedToday, upcoming };
+    const assigned = open.filter((task) => task.ownerId === data.currentUser.id);
+    const team = open.filter((task) => data.currentUser.operationalTeams.includes(task.ownerTeam));
+    return { open, assigned, team, overdue, dueSoon, waiting, completedToday, upcoming };
   }, [data]);
 
   if (isLoading) return <Loading />;
@@ -64,6 +67,14 @@ export function WorkPage() {
     return <Empty icon="alert" title={t("Something went wrong. Please try again.")} />;
   }
   const wb = data as WorkbenchData;
+  const taskViewRows =
+    taskView === "assigned"
+      ? derived.assigned
+      : taskView === "team"
+        ? derived.team
+        : taskView === "due"
+          ? derived.dueSoon
+          : wb.tasks.filter((task) => task.status === "Completed");
   const roster = Array.isArray(rosterData) ? rosterData : [];
   const year = businessDate().slice(0, 4);
   const peopleMetrics = {
@@ -163,7 +174,7 @@ export function WorkPage() {
             <Icon name="doc" />
           </span>
           <div>
-            <b>{derived.open.length}</b>
+            <b>{derived.assigned.length}</b>
             <span>{t("My Tasks")}</span>
             <small>{t("Open tasks assigned to you")}</small>
           </div>
@@ -261,18 +272,38 @@ export function WorkPage() {
         <section className="panel">
           <div className="panelhead">
             <b>{t("My Tasks")}</b>
-            <span className="badge b-active">{derived.open.length}</span>
+            <span className="badge b-active">{taskViewRows.length}</span>
           </div>
-          {derived.open.length === 0 ? (
+          <div className="taskviewtabs">
+            {(["assigned", "team", "due", "completed"] as const).map((view) => (
+              <button
+                key={view}
+                className={taskView === view ? "active" : ""}
+                onClick={() => setTaskView(view)}
+              >
+                {t(
+                  view === "assigned"
+                    ? "Assigned to Me"
+                    : view === "team"
+                      ? "My Team"
+                      : view === "due"
+                        ? "Due Soon"
+                        : "Completed",
+                )}
+              </button>
+            ))}
+          </div>
+          {taskViewRows.length === 0 ? (
             <div className="inlineempty">
               <Icon name="check" /> {t("No open tasks. Enjoy the clarity.")}
             </div>
           ) : (
             <div className="tasks">
-              {derived.open.map((task) => (
+              {taskViewRows.map((task) => (
                 <div className="taskrow" key={task.id}>
                   <button
                     className={`taskcheck${task.status === "Completed" ? " done" : ""}`}
+                    disabled={!task.canEdit || task.status === "Completed"}
                     onClick={() => onToggle(task.id, true)}
                     aria-label={t("Mark Done")}
                   >
@@ -283,7 +314,11 @@ export function WorkPage() {
                     <span>
                       {task.person}
                       {task.caseType ? ` · ${t(task.caseType)}` : ""}
+                      {task.personTeam ? ` · ${task.personTeam}` : ""}
                     </span>
+                    <small>
+                      {t("Owner")}: {task.ownerTeam} · {task.ownerName || t("Unassigned")}
+                    </small>
                   </div>
                   <span className="duedate">
                     <Icon name="calendar" /> {fmtDate(task.due, lang)}

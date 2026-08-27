@@ -6,12 +6,17 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import {
   assignChecklistOwnerFn,
+  assignTaskFn,
+  addTaskCommentFn,
+  createTaskFn,
   getCaseDetailFn,
   getWorkbenchDataFn,
   removeMemberFn,
   shareCaseFn,
   toggleChecklistFn,
   toggleTaskFn,
+  setTaskStatusFn,
+  syncCaseTasksFn,
   updateWorkflowItemFn,
   updateOffboardingDatesFn,
   setCaseConfirmationFn,
@@ -71,9 +76,10 @@ function CaseDetailPage() {
   const canEdit = isOwner || c.accessLevel === "Collaborator";
   const wb: WorkbenchData | null = wbData && !("error" in wbData) ? wbData : null;
   const refresh = () => qc.invalidateQueries({ queryKey: ["case", caseId] });
-  const completedTasks = detail.tasks.filter((x) => x.status.toLowerCase() === "completed").length;
-  const taskProgress = detail.tasks.length
-    ? Math.round((completedTasks / detail.tasks.length) * 100)
+  const progressTasks = detail.tasks.filter((x) => x.mandatory && x.status !== "Not Applicable");
+  const completedTasks = progressTasks.filter((x) => x.status === "Completed").length;
+  const taskProgress = progressTasks.length
+    ? Math.round((completedTasks / progressTasks.length) * 100)
     : 0;
   const changeConfirmation = async (confirmed: boolean) => {
     const message = confirmed
@@ -139,14 +145,14 @@ function CaseDetailPage() {
           <Badge>{c.status}</Badge>
           <Badge>{c.priority}</Badge>
           <Badge>{c.accessLevel}</Badge>
-          {c.caseType === "Onboarding" ? (
+          {detail.tasks.length ? (
             <span className="caseprogress">
               <b>{taskProgress}%</b>
               <i>
                 <em style={{ width: `${taskProgress}%` }} />
               </i>
               <small>
-                {completedTasks}/{detail.tasks.length} {t("tasks completed")}
+                {completedTasks}/{progressTasks.length} {t("mandatory tasks completed")}
               </small>
             </span>
           ) : null}
@@ -221,68 +227,289 @@ function TasksTab({
 }) {
   const { t, lang } = useLang();
   const navigate = useNavigate();
-  const toggle = useServerFn(toggleTaskFn);
+  const setStatus = useServerFn(setTaskStatusFn);
+  const assign = useServerFn(assignTaskFn);
+  const addComment = useServerFn(addTaskCommentFn);
+  const createTask = useServerFn(createTaskFn);
+  const syncTasks = useServerFn(syncCaseTasksFn);
   const qc = useQueryClient();
-  const update = async (taskId: string, complete: boolean) => {
+  const [commenting, setCommenting] = useState<string | null>(null);
+  const [comment, setComment] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [manual, setManual] = useState({
+    title: "",
+    ownerTeam: "HR" as "HR" | "IT" | "Admin",
+    dueDate: "",
+    mandatory: true,
+  });
+  const reload = async () =>
+    Promise.all([qc.invalidateQueries({ queryKey: ["workbench"] }), refresh()]);
+  const update = async (taskId: string, status: string) => {
+    const reason = status === "Not Applicable" ? window.prompt(t("Reason required")) : undefined;
+    if (status === "Not Applicable" && !reason?.trim()) return;
     try {
-      const res = await toggle({ data: { taskId, complete } });
+      const res = await setStatus({
+        data: {
+          taskId,
+          status: status as
+            "Not Started" | "In Progress" | "Waiting" | "Blocked" | "Completed" | "Not Applicable",
+          comment: reason?.trim(),
+        },
+      });
       if ("error" in res) {
         toast.error(opErrorMessage(t, res.error));
         return;
       }
-      await Promise.all([qc.invalidateQueries({ queryKey: ["workbench"] }), refresh()]);
+      await reload();
     } catch {
       toast.error(t("Something went wrong. Please try again."));
     }
   };
+  const submitComment = async (taskId: string) => {
+    if (!comment.trim()) return;
+    const res = await addComment({ data: { taskId, body: comment.trim() } });
+    if ("error" in res) {
+      toast.error(opErrorMessage(t, res.error));
+      return;
+    }
+    setComment("");
+    setCommenting(null);
+    await reload();
+  };
   if (!detail.tasks.length) return <Empty icon="check" title={t("No tasks yet.")} />;
+  const teamGroups = (["HR", "IT", "Admin"] as const).map((team) => ({
+    team,
+    tasks: detail.tasks.filter((task) => task.ownerTeam === team),
+  }));
   return (
-    <div className="panel">
+    <div className="panel phase2tasks">
       <div className="panelhead">
         <div>
           <b>{t("Case Tasks")}</b>
-          <p>{t("Tasks are generated automatically from the onboarding case.")}</p>
+          <p>{t("Shared Case · Team-owned Tasks")}</p>
         </div>
-        <Badge>{`${detail.tasks.filter((x) => x.status.toLowerCase() === "completed").length}/${detail.tasks.length}`}</Badge>
-      </div>
-      <div className="casetasks">
-        {detail.tasks.map((task) => {
-          const done = task.status.toLowerCase() === "completed";
-          const welcome =
-            task.defaultTaskKey === "send_welcome_email" ||
-            task.title.toLowerCase().includes("welcome email");
-          return (
-            <div className={`casetask ${done ? "done" : ""}`} key={task.id}>
+        <div className="tasktools">
+          {canEdit ? (
+            <>
               <button
-                className={`taskcheck${done ? " done" : ""}`}
-                disabled={!canEdit}
-                onClick={() => update(task.id, !done)}
+                className="secondary"
+                onClick={async () => {
+                  const result = await syncTasks({ data: { caseId: detail.case.id } });
+                  if ("error" in result) toast.error(opErrorMessage(t, result.error));
+                  else {
+                    await reload();
+                    toast.success(t("Tasks synchronized"));
+                  }
+                }}
               >
-                <Icon name="check" />
+                <Icon name="history" /> {t("Sync Tasks")}
               </button>
-              <div className="taskmain">
-                <b>{t(task.title)}</b>
-                <span>
-                  {task.assigneeRole ? `${t("Assigned role")}: ${t(task.assigneeRole)}` : ""}
-                  {task.due ? ` · ${t("due")} ${fmtDate(task.due, lang)}` : ""}
-                </span>
-              </div>
-              <Badge>{task.status}</Badge>
-              {welcome && !done ? (
-                <button
-                  className="primary emailtaskbutton"
-                  onClick={() =>
-                    navigate({ to: "/email", search: { caseId: detail.case.id, taskId: task.id } })
+              <button className="primary" onClick={() => setAdding(true)}>
+                <Icon name="plus" /> {t("Add Task")}
+              </button>
+            </>
+          ) : null}
+        </div>
+      </div>
+      {teamGroups.map(({ team, tasks }) => {
+        if (!tasks.length) return null;
+        const completed = tasks.filter((task) => task.status === "Completed").length;
+        return (
+          <section className="taskteamgroup" key={team}>
+            <div className="taskteamhead">
+              <b>{team}</b>
+              <span>
+                {completed}/{tasks.length} {t("completed")}
+              </span>
+            </div>
+            <div className="casetasks">
+              {tasks.map((task) => {
+                const comments = detail.taskComments.filter((item) => item.taskId === task.id);
+                const candidates = detail.assignableUsers.filter((user) =>
+                  user.operationalTeams.includes(team),
+                );
+                return (
+                  <div
+                    className={`casetask taskcollab ${task.status === "Completed" ? "done" : ""}`}
+                    key={task.id}
+                  >
+                    <div className="taskmain">
+                      <div className="tasktitleline">
+                        <b>{t(task.title)}</b>
+                        {!task.mandatory ? <Badge>{t("Optional")}</Badge> : null}
+                        <Badge>{task.source === "manual" ? t("Manual") : t("Template")}</Badge>
+                      </div>
+                      {task.description ? <p>{t(task.description)}</p> : null}
+                      <span>
+                        {task.due ? `${t("Due")} ${fmtDate(task.due, lang)}` : t("Not scheduled")}
+                        {task.completedByName
+                          ? ` · ${t("Completed by")} ${task.completedByName}`
+                          : ""}
+                      </span>
+                      {task.notApplicableReason ? <em>{task.notApplicableReason}</em> : null}
+                      {comments.map((item) => (
+                        <div className="taskcomment" key={item.id}>
+                          <b>
+                            {item.authorName}
+                            {item.authorTeam ? ` · ${item.authorTeam}` : ""}
+                          </b>
+                          <small>{fmtDateTime(item.at, lang)}</small>
+                          <p>{item.body}</p>
+                        </div>
+                      ))}
+                      {commenting === task.id ? (
+                        <div className="taskcommentform">
+                          <input
+                            value={comment}
+                            maxLength={2000}
+                            placeholder={t("Add a progress note…")}
+                            onChange={(event) => setComment(event.target.value)}
+                          />
+                          <button className="primary" onClick={() => submitComment(task.id)}>
+                            {t("Add")}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="taskcontrols">
+                      <select
+                        disabled={!task.canEdit}
+                        value={task.status}
+                        onChange={(event) => update(task.id, event.target.value)}
+                      >
+                        <option>Not Started</option>
+                        <option>In Progress</option>
+                        <option>Waiting</option>
+                        <option>Blocked</option>
+                        <option>Completed</option>
+                        <option>Not Applicable</option>
+                      </select>
+                      <select
+                        disabled={!task.canEdit}
+                        value={task.ownerId ?? ""}
+                        onChange={async (event) => {
+                          const result = await assign({
+                            data: { taskId: task.id, ownerId: event.target.value || null },
+                          });
+                          if ("error" in result) toast.error(opErrorMessage(t, result.error));
+                          else await reload();
+                        }}
+                      >
+                        <option value="">
+                          {t("Unassigned")} · {team}
+                        </option>
+                        {candidates.map((user) => (
+                          <option value={user.id} key={user.id}>
+                            {user.name}
+                          </option>
+                        ))}
+                      </select>
+                      {task.canEdit ? (
+                        <button
+                          className="textbutton"
+                          onClick={() => setCommenting(commenting === task.id ? null : task.id)}
+                        >
+                          {t("Comment")}
+                        </button>
+                      ) : null}
+                      {task.title.toLowerCase().includes("welcome email") &&
+                      task.status !== "Completed" ? (
+                        <button
+                          className="primary emailtaskbutton"
+                          onClick={() =>
+                            navigate({
+                              to: "/email",
+                              search: { caseId: detail.case.id, taskId: task.id },
+                            })
+                          }
+                        >
+                          <Icon name="mail" /> {t("Go send email")}
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
+      {adding ? (
+        <Modal title={t("Add Task")} close={() => setAdding(false)}>
+          <div className="userform">
+            <label>
+              {t("Task Name")}
+              <input
+                value={manual.title}
+                maxLength={200}
+                onChange={(event) => setManual({ ...manual, title: event.target.value })}
+              />
+            </label>
+            <div className="two">
+              <label>
+                {t("Owner Team")}
+                <select
+                  value={manual.ownerTeam}
+                  onChange={(event) =>
+                    setManual({ ...manual, ownerTeam: event.target.value as "HR" | "IT" | "Admin" })
                   }
                 >
-                  <Icon name="mail" />
-                  {t("Go send email")}
-                </button>
-              ) : null}
+                  <option>HR</option>
+                  <option>IT</option>
+                  <option>Admin</option>
+                </select>
+              </label>
+              <label>
+                {t("Due Date")}
+                <input
+                  type="date"
+                  value={manual.dueDate}
+                  onChange={(event) => setManual({ ...manual, dueDate: event.target.value })}
+                />
+              </label>
             </div>
-          );
-        })}
-      </div>
+            <label className="checkline">
+              <input
+                type="checkbox"
+                checked={manual.mandatory}
+                onChange={(event) => setManual({ ...manual, mandatory: event.target.checked })}
+              />{" "}
+              {t("Mandatory")}
+            </label>
+            <p className="securityhint">
+              {t("Manual tasks are never changed by checklist synchronization.")}
+            </p>
+            <div className="modalactions">
+              <button className="secondary" onClick={() => setAdding(false)}>
+                {t("Cancel")}
+              </button>
+              <button
+                className="primary"
+                disabled={!manual.title.trim()}
+                onClick={async () => {
+                  const result = await createTask({
+                    data: {
+                      caseId: detail.case.id,
+                      title: manual.title.trim(),
+                      ownerTeam: manual.ownerTeam,
+                      dueDate: manual.dueDate || undefined,
+                      priority: "Medium",
+                      mandatory: manual.mandatory,
+                    },
+                  });
+                  if ("error" in result) toast.error(opErrorMessage(t, result.error));
+                  else {
+                    setAdding(false);
+                    await reload();
+                  }
+                }}
+              >
+                {t("Add Task")}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
     </div>
   );
 }

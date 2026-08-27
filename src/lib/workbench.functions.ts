@@ -48,9 +48,12 @@ export const createTaskFn = createServerFn({ method: "POST" })
       .object({
         caseId: z.string().uuid(),
         title: z.string().min(1).max(200),
+        description: z.string().max(2000).nullish(),
         dueDate: z.string().max(10).optional(),
         priority: z.enum(["High", "Medium", "Low"]),
         ownerId: z.string().uuid().nullable().optional(),
+        ownerTeam: z.enum(["HR", "IT", "Admin"]).optional(),
+        mandatory: z.boolean().optional(),
       })
       .parse(data),
   )
@@ -84,6 +87,22 @@ export const setTaskStatusFn = createServerFn({ method: "POST" })
   )
   .handler(({ data, context }) =>
     wb.setTaskStatus(context.supabase as wb.Db, context.userId, data),
+  );
+
+export const addTaskCommentFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) =>
+    z.object({ taskId: z.string().uuid(), body: z.string().min(1).max(2000) }).parse(data),
+  )
+  .handler(({ data, context }) =>
+    wb.addTaskComment(context.supabase as wb.Db, context.userId, data),
+  );
+
+export const syncCaseTasksFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) => z.object({ caseId: z.string().uuid() }).parse(data))
+  .handler(({ data, context }) =>
+    wb.syncCaseTasks(context.supabase as wb.Db, context.userId, data.caseId),
   );
 
 export const toggleChecklistFn = createServerFn({ method: "POST" })
@@ -253,6 +272,10 @@ export const saveUserFn = createServerFn({ method: "POST" })
         scopeType: z.enum(["all_organization", "lab", "team", "assigned_cases"]).optional(),
         labId: z.string().uuid().nullable().optional(),
         teamId: z.string().uuid().nullable().optional(),
+        operationalTeams: z
+          .array(z.enum(["HR", "IT", "Admin"]))
+          .max(3)
+          .optional(),
       })
       .parse(data),
   )
@@ -261,6 +284,55 @@ export const saveUserFn = createServerFn({ method: "POST" })
 export const listTemplatesFn = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(({ context }) => wb.listTemplates(context.supabase as wb.Db, context.userId));
+
+export const listChecklistTemplateItemsFn = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(({ context }) =>
+    wb.listChecklistTemplateItems(context.supabase as wb.Db, context.userId),
+  );
+
+export const saveChecklistTemplateItemFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) =>
+    z
+      .object({
+        id: z.string().uuid().optional(),
+        templateId: z.string().uuid(),
+        caseType: z.enum(["Onboarding", "Offboarding"]),
+        title: z.string().min(1).max(160),
+        description: z.string().max(2000).nullish(),
+        ownerTeam: z.enum(["HR", "IT", "Admin"]),
+        mandatory: z.boolean(),
+        active: z.boolean(),
+        employmentTypes: z.array(z.string().max(80)).max(20),
+        leavingTypes: z.array(z.string().max(80)).max(20),
+        leavingReasons: z.array(z.string().max(120)).max(20),
+        dueReference: z.enum(["start_date", "contract_end_date", "last_working_day", "manual"]),
+        dueOffsetDays: z.number().int().min(-365).max(365),
+        sortOrder: z.number().int().min(0).max(10000),
+      })
+      .parse(data),
+  )
+  .handler(({ data, context }) =>
+    wb.saveChecklistTemplateItem(context.supabase as wb.Db, context.userId, data),
+  );
+
+export const saveChecklistTemplateFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) =>
+    z
+      .object({
+        id: z.string().uuid().optional(),
+        name: z.string().min(1).max(160),
+        description: z.string().max(2000).optional(),
+        caseType: z.enum(["Onboarding", "Offboarding"]),
+        active: z.boolean(),
+      })
+      .parse(data),
+  )
+  .handler(({ data, context }) =>
+    wb.saveChecklistTemplate(context.supabase as wb.Db, context.userId, data),
+  );
 
 export const listPublishedTemplatesFn = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])

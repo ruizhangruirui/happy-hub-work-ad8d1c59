@@ -33,13 +33,15 @@ Onboarding and offboarding often involve HR, administration, IT, reception, lab 
 - Contract End Date is required when Offboarding is created; Last Working Day may remain unconfirmed and can be added later on the same Case.
 - Employee ID is canonical on the Person and is enforced consistently across Employment history by PostgreSQL.
 
-The complete V1 domain, checklist, collaboration, communication and reporting design is documented in [V1 Architecture](docs/V1-ARCHITECTURE.md).
+The lifecycle foundation is documented in [V1 Architecture](docs/V1-ARCHITECTURE.md). The configurable checklist engine and team-scoped collaboration model are documented in [Phase 2 Architecture](docs/PHASE2-ARCHITECTURE.md).
 
 ## Phase Status
 
 **Implemented and hardened in Phase 1:** canonical Person/Employment/Case separation; onboarding without Employee ID; same-Person identity enrichment; Confirm Joined; Confirm Left; separate Contract End Date and Last Working Day; pending-leaver Active People behavior; permanent Onboarding/Offboarding history; confirmation audit metadata; lifecycle-safe workflow reopen.
 
-**Later-phase work:** checklist-rule configuration, IT/Admin collaboration UX, Email Center V2, Outlook attachment helper, export refinements and People Analytics remain separate product phases. Some foundations or early UI may exist in the repository, but they are not part of the Phase 1 completion claim.
+**Implemented in Phase 2:** configurable checklist templates and stable-code rules; idempotent task generation/synchronization; HR/IT/Admin ownership and assignment; team-scoped server authorization; My Tasks workload views; grouped Case progress; due-date recalculation; comments and task audit history; mandatory-task Case completion gate.
+
+**Later-phase work:** AI agents, Email Center V2, Outlook attachment helper, Task attachment upload UI, export refinements, advanced charts and People Analytics remain separate product phases.
 
 ## Technology Stack
 

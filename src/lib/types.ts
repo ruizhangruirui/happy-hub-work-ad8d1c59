@@ -7,6 +7,7 @@ export interface CurrentUser {
   title: string | null;
   role: string;
   scopes: string[];
+  operationalTeams: Array<"HR" | "IT" | "Admin">;
 }
 
 export interface UserDto {
@@ -17,6 +18,7 @@ export interface UserDto {
   role: string;
   status: string;
   scopes: string[];
+  operationalTeams: Array<"HR" | "IT" | "Admin">;
 }
 
 export interface TaskDto {
@@ -39,6 +41,53 @@ export interface TaskDto {
   ownerTeam: "HR" | "IT" | "Admin";
   mandatory: boolean;
   completedByName: string | null;
+  personTeam: string;
+  startDate: string | null;
+  contractEndDate: string | null;
+  lastWorkingDay: string | null;
+  templateItemId: string | null;
+  source: "template" | "manual";
+  notApplicableReason: string | null;
+  canEdit: boolean;
+}
+
+export interface TaskCommentDto {
+  id: string;
+  taskId: string;
+  authorName: string;
+  authorTeam: string | null;
+  body: string;
+  at: string;
+}
+
+export interface ChecklistTemplateItemDto {
+  id: string;
+  templateId: string;
+  templateName: string;
+  templateVersion: number;
+  key: string;
+  caseType: "Onboarding" | "Offboarding";
+  title: string;
+  description: string | null;
+  ownerTeam: "HR" | "IT" | "Admin";
+  mandatory: boolean;
+  active: boolean;
+  employmentTypes: string[];
+  leavingTypes: string[];
+  leavingReasons: string[];
+  dueReference: "start_date" | "contract_end_date" | "last_working_day" | "manual";
+  dueOffsetDays: number;
+  sortOrder: number;
+}
+
+export interface ChecklistTemplateDto {
+  id: string;
+  key: string;
+  name: string;
+  caseType: "Onboarding" | "Offboarding";
+  description: string | null;
+  active: boolean;
+  version: number;
 }
 
 export interface CaseDto {
@@ -153,7 +202,8 @@ export interface CaseDetailDto {
   workflow: WorkflowItemDto[];
   tasks: TaskDto[];
   externalRequests: ExternalRequestDto[];
-  assignableUsers: { id: string; name: string }[];
+  taskComments: TaskCommentDto[];
+  assignableUsers: { id: string; name: string; operationalTeams: string[] }[];
 }
 
 export interface TemplateDto {

@@ -8,6 +8,8 @@ const ADMIN = "11111111-1111-1111-1111-111111111111";
 const VIEWER = "33333333-3333-3333-3333-333333333333";
 const MANAGER_A = "44444444-4444-4444-4444-444444444444";
 const MANAGER_B = "77777777-7777-7777-7777-777777777777";
+const IT_USER = "88888888-8888-8888-8888-888888888888";
+const ADMIN_TEAM_USER = "99999999-9999-9999-9999-999999999999";
 const TEAM_A = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 const TEAM_B = "cccccccc-cccc-cccc-cccc-cccccccccccc";
 
@@ -97,17 +99,33 @@ async function seedManagerB() {
   );
 }
 
+async function seedFunctionalUser(id: string, email: string, ownerTeam: "IT" | "Admin") {
+  await db.query(
+    `insert into auth.users(id,email,raw_user_meta_data)
+     values($1,$2::text,jsonb_build_object('name',$2::text))`,
+    [id, email],
+  );
+  await db.query("update public.profiles set status='Active' where id=$1", [id]);
+  await db.query("delete from public.user_roles where user_id=$1", [id]);
+  await db.query("insert into public.user_roles(user_id,role) values($1,'viewer')", [id]);
+  await db.query("insert into public.user_operational_teams(user_id,owner_team) values($1,$2)", [
+    id,
+    ownerTeam,
+  ]);
+}
+
 async function createOnboarding(
   userId: string,
   teamId: string,
   suffix: string,
   existingPersonId: string | null = null,
   employeeId: string | null = `EMP-${suffix}`,
+  employmentType = "Employee",
 ) {
   return asUser<{ result: { caseId: string; personId: string; employmentId: string } }>(
     userId,
     `select public.create_onboarding_case_v2(
-      $1,$2,$3,null,$4,$5,'Employee',$6,'Engineer','Zurich','Supervisor',null,
+      $1,$2,$3,null,$4,$5,$6,$7,'Engineer','Zurich','Supervisor',null,
       '2026-08-01',100,'Medium',null,false
     ) result`,
     [
@@ -116,6 +134,7 @@ async function createOnboarding(
       `Family${suffix}`,
       `${suffix}@example.test`,
       employeeId,
+      employmentType,
       teamId,
     ],
   );
@@ -126,6 +145,8 @@ beforeAll(async () => {
   await bootstrapSupabaseSchemas();
   await applyMigrations();
   await seedManagerB();
+  await seedFunctionalUser(IT_USER, "it@example.test", "IT");
+  await seedFunctionalUser(ADMIN_TEAM_USER, "admin.team@example.test", "Admin");
 }, 120_000);
 
 afterAll(async () => {
@@ -563,5 +584,166 @@ describe("Phase 1 final closure — real PostgreSQL integration", () => {
       last_working_day: "2026-09-15",
       effective_date: "2026-09-30",
     });
+  });
+});
+
+describe("Phase 2 checklist collaboration — real PostgreSQL integration", () => {
+  it("generates HR, IT and Admin onboarding rules idempotently", async () => {
+    const created = await createOnboarding(ADMIN, TEAM_A, "P2-ONB");
+    const caseId = created.rows[0]!.result.caseId;
+    const first = await db.query<{ owner_team: string; count: number }>(
+      `select owner_team,count(*)::int count from public.tasks
+       where case_id=$1 and source='template' group by owner_team order by owner_team`,
+      [caseId],
+    );
+    expect(new Set(first.rows.map((row) => row.owner_team))).toEqual(
+      new Set(["HR", "IT", "Admin"]),
+    );
+    const before = first.rows.reduce((total, row) => total + row.count, 0);
+    await asUser(ADMIN, "select public.sync_case_tasks($1,'test')", [caseId]);
+    await asUser(ADMIN, "select public.sync_case_tasks($1,'test again')", [caseId]);
+    const after = await db.query<{ count: number }>(
+      "select count(*)::int count from public.tasks where case_id=$1 and source='template'",
+      [caseId],
+    );
+    expect(after.rows[0]!.count).toBe(before);
+  });
+
+  it.each([
+    ["Employee", "Voluntary Resignation", true, false, false],
+    ["Employee", "Employer Termination", true, true, true],
+    ["Intern", "Voluntary Resignation", false, false, false],
+    ["Leased Labour", "Employer Termination", false, false, false],
+  ])(
+    "applies the offboarding document matrix for %s / %s",
+    async (employmentType, leavingType, agreement, termination, garden) => {
+      const suffix = `${employmentType}-${leavingType}`.replaceAll(" ", "-");
+      const created = await createOnboarding(
+        ADMIN,
+        TEAM_A,
+        suffix,
+        null,
+        `EMP-${suffix}`,
+        employmentType,
+      );
+      const ids = created.rows[0]!.result;
+      await asUser(ADMIN, "select public.confirm_joined($1,null)", [ids.caseId]);
+      const off = await asUser<{ result: { caseId: string } }>(
+        ADMIN,
+        "select public.create_offboarding_case_v3($1,$2,'2026-11-30',null,$3,null,'Medium',null) result",
+        [ids.personId, ids.employmentId, leavingType],
+      );
+      const titles = await db.query<{ title: string }>(
+        "select title from public.tasks where case_id=$1",
+        [off.rows[0]!.result.caseId],
+      );
+      const has = (title: string) => titles.rows.some((row) => row.title === title);
+      expect(has("Leaving Agreement")).toBe(agreement);
+      expect(has("Termination Letter")).toBe(termination);
+      expect(has("Garden Leave Letter")).toBe(garden);
+      expect(has("Account Closure")).toBe(true);
+      expect(has("Badge Return")).toBe(true);
+    },
+  );
+
+  it("creates LWD-dependent work unscheduled and recalculates only open due dates", async () => {
+    const created = await createOnboarding(ADMIN, TEAM_A, "P2-LWD");
+    const ids = created.rows[0]!.result;
+    await asUser(ADMIN, "select public.confirm_joined($1,null)", [ids.caseId]);
+    const off = await asUser<{ result: { caseId: string } }>(
+      ADMIN,
+      "select public.create_offboarding_case_v3($1,$2,'2026-12-31',null,'Voluntary Resignation',null,'Medium',null) result",
+      [ids.personId, ids.employmentId],
+    );
+    const caseId = off.rows[0]!.result.caseId;
+    let accessTask = await db.query<{ id: string; due_date: string | null }>(
+      "select id,due_date::text from public.tasks where case_id=$1 and title='Access Closure / Revocation'",
+      [caseId],
+    );
+    expect(accessTask.rows[0]!.due_date).toBeNull();
+    await asUser(ADMIN, "select public.update_offboarding_dates($1,'2026-12-31','2026-09-15')", [
+      caseId,
+    ]);
+    accessTask = await db.query(
+      "select id,due_date::text from public.tasks where case_id=$1 and title='Access Closure / Revocation'",
+      [caseId],
+    );
+    expect(accessTask.rows[0]!.due_date).toBe("2026-09-15");
+    await asUser(IT_USER, "select public.set_task_status($1,'Completed',null)", [
+      accessTask.rows[0]!.id,
+    ]);
+    await asUser(ADMIN, "select public.update_offboarding_dates($1,'2026-12-31','2026-09-20')", [
+      caseId,
+    ]);
+    const completed = await db.query<{ due_date: string; completed_by: string }>(
+      "select due_date::text,completed_by::text from public.tasks where id=$1",
+      [accessTask.rows[0]!.id],
+    );
+    expect(completed.rows[0]).toEqual({ due_date: "2026-09-15", completed_by: IT_USER });
+  });
+
+  it("enforces IT and Admin task scope and denies lifecycle confirmation", async () => {
+    const created = await createOnboarding(ADMIN, TEAM_A, "P2-RLS");
+    const caseId = created.rows[0]!.result.caseId;
+    const tasks = await db.query<{ id: string; owner_team: string }>(
+      "select id,owner_team from public.tasks where case_id=$1",
+      [caseId],
+    );
+    const task = (team: string) => tasks.rows.find((row) => row.owner_team === team)!.id;
+    const itVisible = await asUser<{ owner_team: string }>(
+      IT_USER,
+      "select owner_team from public.list_operational_tasks($1)",
+      [caseId],
+    );
+    expect(new Set(itVisible.rows.map((row) => row.owner_team))).toEqual(new Set(["IT"]));
+    await expect(
+      asUser(IT_USER, "update public.tasks set title='bypass' where id=$1", [task("IT")]),
+    ).rejects.toThrow();
+    await asUser(IT_USER, "select public.set_task_status($1,'In Progress',null)", [task("IT")]);
+    await expect(
+      asUser(IT_USER, "select public.set_task_status($1,'Completed',null)", [task("HR")]),
+    ).rejects.toThrow();
+    await expect(
+      asUser(IT_USER, "select public.set_task_status($1,'Completed',null)", [task("Admin")]),
+    ).rejects.toThrow();
+    await expect(
+      asUser(IT_USER, "select public.confirm_joined($1,null)", [caseId]),
+    ).rejects.toThrow();
+
+    await asUser(ADMIN_TEAM_USER, "select public.set_task_status($1,'In Progress',null)", [
+      task("Admin"),
+    ]);
+    await expect(
+      asUser(ADMIN_TEAM_USER, "select public.set_task_status($1,'Completed',null)", [task("IT")]),
+    ).rejects.toThrow();
+    await expect(
+      asUser(ADMIN_TEAM_USER, "select public.confirm_joined($1,null)", [caseId]),
+    ).rejects.toThrow();
+  });
+
+  it("keeps lifecycle independent while mandatory tasks gate Case completion", async () => {
+    const created = await createOnboarding(ADMIN, TEAM_A, "P2-MANDATORY");
+    const ids = created.rows[0]!.result;
+    await asUser(ADMIN, "select public.confirm_joined($1,null)", [ids.caseId]);
+    const state = await db.query<{ status: string }>(
+      "select status from public.employments where id=$1",
+      [ids.employmentId],
+    );
+    expect(state.rows[0]!.status).toBe("active");
+    await expect(
+      asUser(ADMIN, "update public.cases set status='Completed' where id=$1", [ids.caseId]),
+    ).rejects.toThrow(/Mandatory tasks/);
+    const mandatory = await db.query<{ id: string }>(
+      "select id from public.tasks where case_id=$1 and mandatory and status not in ('Completed','Not Applicable')",
+      [ids.caseId],
+    );
+    for (const row of mandatory.rows) {
+      await asUser(ADMIN, "select public.set_task_status($1,'Completed',null)", [row.id]);
+    }
+    const finalCase = await db.query<{ status: string }>(
+      "select status from public.cases where id=$1",
+      [ids.caseId],
+    );
+    expect(finalCase.rows[0]!.status).toBe("Completed");
   });
 });
