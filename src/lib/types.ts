@@ -129,6 +129,19 @@ export interface ChecklistDto {
   completedDate: string | null;
   completedByName: string | null;
   taskId: string | null;
+  ownerTeam: "HR" | "IT" | "Admin";
+  canEdit: boolean;
+}
+
+export interface CaseCapabilitiesDto {
+  canManageCase: boolean;
+  canConfirmLifecycle: boolean;
+  canManageTaskStructure: boolean;
+  canManageChecklistRules: boolean;
+  canManageWorkflow: boolean;
+  canManageFiles: boolean;
+  canShareCase: boolean;
+  canViewFullCase: boolean;
 }
 
 export interface MemberDto {
@@ -204,6 +217,7 @@ export interface CaseDetailDto {
   externalRequests: ExternalRequestDto[];
   taskComments: TaskCommentDto[];
   assignableUsers: { id: string; name: string; operationalTeams: string[] }[];
+  capabilities: CaseCapabilitiesDto;
 }
 
 export interface TemplateDto {

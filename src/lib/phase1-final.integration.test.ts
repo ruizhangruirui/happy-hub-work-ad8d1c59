@@ -9,6 +9,7 @@ const VIEWER = "33333333-3333-3333-3333-333333333333";
 const MANAGER_A = "44444444-4444-4444-4444-444444444444";
 const MANAGER_B = "77777777-7777-7777-7777-777777777777";
 const IT_USER = "88888888-8888-8888-8888-888888888888";
+const IT_USER_B = "12121212-1212-1212-1212-121212121212";
 const ADMIN_TEAM_USER = "99999999-9999-9999-9999-999999999999";
 const TEAM_A = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 const TEAM_B = "cccccccc-cccc-cccc-cccc-cccccccccccc";
@@ -146,6 +147,7 @@ beforeAll(async () => {
   await applyMigrations();
   await seedManagerB();
   await seedFunctionalUser(IT_USER, "it@example.test", "IT");
+  await seedFunctionalUser(IT_USER_B, "it.b@example.test", "IT");
   await seedFunctionalUser(ADMIN_TEAM_USER, "admin.team@example.test", "Admin");
 }, 120_000);
 
@@ -745,5 +747,155 @@ describe("Phase 2 checklist collaboration — real PostgreSQL integration", () =
       [ids.caseId],
     );
     expect(finalCase.rows[0]!.status).toBe("Completed");
+  });
+});
+
+describe("Phase 2 closure — capability and Checklist consistency", () => {
+  it("does not let Case sharing grant HR or cross-team mutation rights", async () => {
+    const created = await createOnboarding(ADMIN, TEAM_A, "P2-CLOSE-SHARE");
+    const ids = created.rows[0]!.result;
+    await asUser(ADMIN, "select public.confirm_joined($1,null)", [ids.caseId]);
+    const offboarding = await asUser<{ result: { caseId: string } }>(
+      ADMIN,
+      "select public.create_offboarding_case_v3($1,$2,'2026-12-31',null,'Voluntary Resignation',null,'Medium',null) result",
+      [ids.personId, ids.employmentId],
+    );
+    const caseId = offboarding.rows[0]!.result.caseId;
+    for (const [userId, level] of [
+      [IT_USER, "collaborator"],
+      [ADMIN_TEAM_USER, "collaborator"],
+      [VIEWER, "viewer"],
+    ] as const) {
+      await asUser(
+        ADMIN,
+        "insert into public.case_members(case_id,user_id,access_level,created_by) values($1,$2,$3,$4)",
+        [caseId, userId, level, ADMIN],
+      );
+      const capabilities = await asUser<{ capabilities: Record<string, boolean> }>(
+        userId,
+        "select public.get_case_capabilities($1) capabilities",
+        [caseId],
+      );
+      expect(capabilities.rows[0]!.capabilities["canManageCase"]).toBe(false);
+      expect(capabilities.rows[0]!.capabilities["canConfirmLifecycle"]).toBe(false);
+      expect(capabilities.rows[0]!.capabilities["canManageTaskStructure"]).toBe(false);
+    }
+
+    const tasks = await db.query<{ id: string; owner_team: string }>(
+      "select id,owner_team from public.tasks where case_id=$1",
+      [caseId],
+    );
+    const task = (team: string) => tasks.rows.find((row) => row.owner_team === team)!.id;
+    await asUser(IT_USER, "select public.set_task_status($1,'In Progress',null)", [task("IT")]);
+    await expect(
+      asUser(IT_USER, "select public.set_task_status($1,'Completed',null)", [task("HR")]),
+    ).rejects.toThrow();
+    await expect(
+      asUser(IT_USER, "select public.set_task_status($1,'Completed',null)", [task("Admin")]),
+    ).rejects.toThrow();
+    await asUser(ADMIN_TEAM_USER, "select public.set_task_status($1,'In Progress',null)", [
+      task("Admin"),
+    ]);
+    await expect(
+      asUser(ADMIN_TEAM_USER, "select public.set_task_status($1,'Completed',null)", [task("IT")]),
+    ).rejects.toThrow();
+    await expect(
+      asUser(IT_USER, "select public.confirm_left($1,null)", [caseId]),
+    ).rejects.toThrow();
+    await expect(
+      asUser(IT_USER, "select public.update_offboarding_dates($1,'2027-01-31',null)", [caseId]),
+    ).rejects.toThrow();
+    await expect(
+      asUser(IT_USER, "select public.sync_case_tasks($1,'collaborator bypass')", [caseId]),
+    ).rejects.toThrow();
+    const workflowItem = await db.query<{ id: string }>(
+      "select id from public.case_workflow_items where case_id=$1 limit 1",
+      [ids.caseId],
+    );
+    const workflowBypass = await asUser(
+      IT_USER,
+      "update public.case_workflow_items set status='Completed' where id=$1",
+      [workflowItem.rows[0]!.id],
+    );
+    expect(workflowBypass.rowCount).toBe(0);
+    await expect(
+      asUser(
+        IT_USER,
+        "select public.create_manual_task($1,'Bypass',null,'IT',null,true,null,'Medium')",
+        [caseId],
+      ),
+    ).rejects.toThrow();
+    await expect(
+      asUser(VIEWER, "select public.set_task_status($1,'Completed',null)", [task("HR")]),
+    ).rejects.toThrow();
+    await expect(
+      asUser(VIEWER, "select public.assign_task($1,$2)", [task("IT"), VIEWER]),
+    ).rejects.toThrow();
+  });
+
+  it("keeps linked Checklist assignment and completion projected from Task", async () => {
+    const created = await createOnboarding(ADMIN, TEAM_A, "P2-CLOSE-CHECKLIST");
+    const caseId = created.rows[0]!.result.caseId;
+    const linked = await db.query<{ task_id: string; checklist_item_id: string }>(
+      `select id task_id,checklist_item_id from public.tasks
+       where case_id=$1 and owner_team='IT' and checklist_item_id is not null limit 1`,
+      [caseId],
+    );
+    const { task_id: taskId, checklist_item_id: itemId } = linked.rows[0]!;
+    await asUser(ADMIN, "select public.assign_task($1,$2)", [taskId, IT_USER]);
+    let owners = await db.query<{ task_owner: string; checklist_owner: string }>(
+      `select t.owner_id::text task_owner,ci.owner_id::text checklist_owner
+       from public.tasks t join public.checklist_items ci on ci.id=t.checklist_item_id where t.id=$1`,
+      [taskId],
+    );
+    expect(owners.rows[0]).toEqual({ task_owner: IT_USER, checklist_owner: IT_USER });
+
+    await asUser(IT_USER, "select public.assign_checklist_owner($1,$2)", [itemId, IT_USER_B]);
+    owners = await db.query(
+      `select t.owner_id::text task_owner,ci.owner_id::text checklist_owner
+       from public.tasks t join public.checklist_items ci on ci.id=t.checklist_item_id where t.id=$1`,
+      [taskId],
+    );
+    expect(owners.rows[0]).toEqual({ task_owner: IT_USER_B, checklist_owner: IT_USER_B });
+
+    await expect(
+      asUser(IT_USER_B, "select public.assign_task($1,$2)", [taskId, ADMIN_TEAM_USER]),
+    ).rejects.toThrow(/owner team/);
+    await expect(
+      asUser(IT_USER_B, "select public.assign_checklist_owner($1,$2)", [itemId, ADMIN_TEAM_USER]),
+    ).rejects.toThrow(/owner team/);
+
+    await asUser(IT_USER_B, "select public.set_checklist_completion($1,true)", [itemId]);
+    let state = await db.query<{
+      task_status: string;
+      checklist_status: string;
+      completed_by: string;
+    }>(
+      `select t.status task_status,ci.status checklist_status,t.completed_by::text completed_by
+       from public.tasks t join public.checklist_items ci on ci.id=t.checklist_item_id where t.id=$1`,
+      [taskId],
+    );
+    expect(state.rows[0]).toEqual({
+      task_status: "Completed",
+      checklist_status: "Completed",
+      completed_by: IT_USER_B,
+    });
+    await asUser(IT_USER_B, "select public.set_checklist_completion($1,false)", [itemId]);
+    state = await db.query(
+      `select t.status task_status,ci.status checklist_status,t.completed_by::text completed_by
+       from public.tasks t join public.checklist_items ci on ci.id=t.checklist_item_id where t.id=$1`,
+      [taskId],
+    );
+    expect(state.rows[0]).toEqual({
+      task_status: "Not Started",
+      checklist_status: "Open",
+      completed_by: null,
+    });
+    await expect(
+      asUser(IT_USER_B, "update public.checklist_items set owner_id=$2 where id=$1", [
+        itemId,
+        ADMIN_TEAM_USER,
+      ]),
+    ).rejects.toThrow();
   });
 });

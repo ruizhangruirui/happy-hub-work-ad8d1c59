@@ -150,3 +150,10 @@ Object.assign(zh, {
   "Create Checklist Template":"创建清单模板","Edit Checklist Template":"编辑清单模板","Edit Template":"编辑模板","Add Rule":"新增规则","Add Checklist Rule":"新增清单规则",
   "Case Type":"事项类型","No rules yet. Add the first checklist item.":"暂无规则，请添加第一项清单任务。","Leaving reason codes":"离职原因代码","Leave blank to apply to all reasons":"留空表示适用于所有离职原因"
 });
+
+Object.assign(zh, {
+  "applicable mandatory tasks completed":"项适用的必填任务已完成","applicable tasks completed":"项适用任务已完成",
+  "Restricted field: visible to authorized HR case managers only.":"受限字段：仅授权的 HR 事项管理员可见。",
+  "Can view shared Case information allowed by their access":"可查看其权限允许的共享事项信息",
+  "Can participate according to functional-team and Task permissions":"可依据职能团队和任务权限参与协作"
+});

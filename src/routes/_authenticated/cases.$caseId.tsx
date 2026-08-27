@@ -26,6 +26,7 @@ import type { CaseDetailDto, WorkbenchData } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
 import { opErrorMessage } from "@/lib/errors";
 import { fmtDate, fmtDateTime } from "@/lib/format";
+import { taskProgressSummary } from "@/lib/domain";
 import { Badge, Empty, Icon, Loading, Modal } from "@/components/workbench/ui";
 
 export const Route = createFileRoute("/_authenticated/cases/$caseId")({
@@ -72,15 +73,10 @@ function CaseDetailPage() {
   }
   const detail = data as CaseDetailDto;
   const c = detail.case;
-  const isOwner = c.accessLevel === "Owner";
-  const canEdit = isOwner || c.accessLevel === "Collaborator";
+  const capabilities = detail.capabilities;
   const wb: WorkbenchData | null = wbData && !("error" in wbData) ? wbData : null;
   const refresh = () => qc.invalidateQueries({ queryKey: ["case", caseId] });
-  const progressTasks = detail.tasks.filter((x) => x.mandatory && x.status !== "Not Applicable");
-  const completedTasks = progressTasks.filter((x) => x.status === "Completed").length;
-  const taskProgress = progressTasks.length
-    ? Math.round((completedTasks / progressTasks.length) * 100)
-    : 0;
+  const mandatoryProgress = taskProgressSummary(detail.tasks, true);
   const changeConfirmation = async (confirmed: boolean) => {
     const message = confirmed
       ? c.caseType === "Onboarding"
@@ -147,16 +143,17 @@ function CaseDetailPage() {
           <Badge>{c.accessLevel}</Badge>
           {detail.tasks.length ? (
             <span className="caseprogress">
-              <b>{taskProgress}%</b>
+              <b>{mandatoryProgress.percent}%</b>
               <i>
-                <em style={{ width: `${taskProgress}%` }} />
+                <em style={{ width: `${mandatoryProgress.percent}%` }} />
               </i>
               <small>
-                {completedTasks}/{progressTasks.length} {t("mandatory tasks completed")}
+                {mandatoryProgress.completed}/{mandatoryProgress.applicable}{" "}
+                {t("applicable mandatory tasks completed")}
               </small>
             </span>
           ) : null}
-          {canEdit ? (
+          {capabilities.canConfirmLifecycle ? (
             <button
               className={c.joinedAt || c.leftAt ? "secondary" : "primary"}
               onClick={() => changeConfirmation(!(c.joinedAt || c.leftAt))}
@@ -171,7 +168,7 @@ function CaseDetailPage() {
               )}
             </button>
           ) : null}
-          {isOwner ? (
+          {capabilities.canShareCase ? (
             <button className="primary" onClick={() => setShareOpen(true)}>
               <Icon name="link" /> {t("Share")}
             </button>
@@ -188,18 +185,33 @@ function CaseDetailPage() {
       </div>
 
       {tab === "Overview" ? (
-        <OverviewTab detail={detail} canEdit={canEdit} refresh={refresh} />
+        <OverviewTab detail={detail} canManageCase={capabilities.canManageCase} refresh={refresh} />
       ) : null}
-      {tab === "Tasks" ? <TasksTab detail={detail} canEdit={canEdit} refresh={refresh} /> : null}
+      {tab === "Tasks" ? (
+        <TasksTab
+          detail={detail}
+          canManageTaskStructure={capabilities.canManageTaskStructure}
+          refresh={refresh}
+        />
+      ) : null}
       {tab === "Workflow" ? (
-        <WorkflowTab detail={detail} canEdit={canEdit} refresh={refresh} />
+        <WorkflowTab
+          detail={detail}
+          canManageWorkflow={capabilities.canManageWorkflow}
+          refresh={refresh}
+        />
       ) : null}
       {tab === "Checklist" ? (
-        <ChecklistTab detail={detail} canEdit={canEdit} refresh={refresh} caseId={caseId} />
+        <ChecklistTab detail={detail} refresh={refresh} caseId={caseId} />
       ) : null}
       {tab === "Communication" ? <CommunicationTab detail={detail} caseId={caseId} /> : null}
       {tab === "Files" ? (
-        <FilesTab detail={detail} canEdit={canEdit} refresh={refresh} caseId={caseId} />
+        <FilesTab
+          detail={detail}
+          canManageFiles={capabilities.canManageFiles}
+          refresh={refresh}
+          caseId={caseId}
+        />
       ) : null}
       {tab === "History" ? <HistoryTab detail={detail} /> : null}
 
@@ -218,11 +230,11 @@ function CaseDetailPage() {
 
 function TasksTab({
   detail,
-  canEdit,
+  canManageTaskStructure,
   refresh,
 }: {
   detail: CaseDetailDto;
-  canEdit: boolean;
+  canManageTaskStructure: boolean;
   refresh: () => void;
 }) {
   const { t, lang } = useLang();
@@ -289,7 +301,7 @@ function TasksTab({
           <p>{t("Shared Case · Team-owned Tasks")}</p>
         </div>
         <div className="tasktools">
-          {canEdit ? (
+          {canManageTaskStructure ? (
             <>
               <button
                 className="secondary"
@@ -313,13 +325,13 @@ function TasksTab({
       </div>
       {teamGroups.map(({ team, tasks }) => {
         if (!tasks.length) return null;
-        const completed = tasks.filter((task) => task.status === "Completed").length;
+        const progress = taskProgressSummary(tasks);
         return (
           <section className="taskteamgroup" key={team}>
             <div className="taskteamhead">
               <b>{team}</b>
               <span>
-                {completed}/{tasks.length} {t("completed")}
+                {progress.completed}/{progress.applicable} {t("applicable tasks completed")}
               </span>
             </div>
             <div className="casetasks">
@@ -412,7 +424,8 @@ function TasksTab({
                           {t("Comment")}
                         </button>
                       ) : null}
-                      {task.title.toLowerCase().includes("welcome email") &&
+                      {task.canEdit &&
+                      task.title.toLowerCase().includes("welcome email") &&
                       task.status !== "Completed" ? (
                         <button
                           className="primary emailtaskbutton"
@@ -516,11 +529,11 @@ function TasksTab({
 
 function WorkflowTab({
   detail,
-  canEdit,
+  canManageWorkflow,
   refresh,
 }: {
   detail: CaseDetailDto;
-  canEdit: boolean;
+  canManageWorkflow: boolean;
   refresh: () => void;
 }) {
   const { t, lang } = useLang();
@@ -591,7 +604,7 @@ function WorkflowTab({
                       <Badge>{x.status}</Badge>
                     </div>
                   ))}
-                  {canEdit && item.status !== "Not Required" ? (
+                  {canManageWorkflow && item.status !== "Not Required" ? (
                     <div className="workflowactions">
                       <select
                         value={item.status}
@@ -765,11 +778,11 @@ function Field({ label, value }: { label: string; value: string | null | undefin
 
 function OverviewTab({
   detail,
-  canEdit,
+  canManageCase,
   refresh,
 }: {
   detail: CaseDetailDto;
-  canEdit: boolean;
+  canManageCase: boolean;
   refresh: () => void;
 }) {
   const { t } = useLang();
@@ -828,7 +841,7 @@ function OverviewTab({
       <div className="detailcard">
         <div className="panelhead">
           <b>{t("Timeline")}</b>
-          {c.caseType === "Offboarding" && canEdit ? (
+          {c.caseType === "Offboarding" && canManageCase ? (
             <button className="secondary" onClick={() => setDateOpen(true)}>
               {t("Edit dates")}
             </button>
@@ -874,7 +887,7 @@ function OverviewTab({
         ) : (
           <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--ink-sub)" }}>
             <Icon name="lock" />{" "}
-            {t("Restricted field: visible to case owners and collaborators only.")}
+            {t("Restricted field: visible to authorized HR case managers only.")}
           </p>
         )}
       </div>
@@ -933,12 +946,10 @@ function OffboardingDatesModal({
 
 function ChecklistTab({
   detail,
-  canEdit,
   refresh,
   caseId,
 }: {
   detail: CaseDetailDto;
-  canEdit: boolean;
   refresh: () => void;
   caseId: string;
 }) {
@@ -991,13 +1002,17 @@ function ChecklistTab({
               .filter((item) => item.section === section)
               .map((item) => {
                 const done = item.status === "Completed";
+                const resolved = done || item.status === "Not Required";
+                const candidates = detail.assignableUsers.filter((user) =>
+                  user.operationalTeams.includes(item.ownerTeam),
+                );
                 return (
                   <div className="checkrow" key={item.id}>
                     <button
-                      className={`taskcheck${done ? " done" : ""}`}
-                      disabled={!canEdit}
-                      onClick={() => toggle(item.id, !done)}
-                      aria-label={done ? t("Reopen") : t("Mark Done")}
+                      className={`taskcheck${resolved ? " done" : ""}`}
+                      disabled={!item.canEdit}
+                      onClick={() => toggle(item.id, !resolved)}
+                      aria-label={resolved ? t("Reopen") : t("Mark Done")}
                     >
                       <Icon name="check" />
                     </button>
@@ -1013,15 +1028,18 @@ function ChecklistTab({
                           ? ` · ${t("Completed by")} ${item.completedByName}`
                           : ""}
                       </span>
+                      {item.status === "Not Required" ? <Badge>{t("Not Applicable")}</Badge> : null}
                     </div>
-                    {canEdit ? (
+                    {item.canEdit ? (
                       <select
                         className="ownerselect"
                         value={item.ownerId ?? ""}
                         onChange={(e) => assign(item.id, e.target.value || null)}
                       >
-                        <option value="">{t("Unassigned")}</option>
-                        {detail.assignableUsers.map((u) => (
+                        <option value="">
+                          {t("Unassigned")} · {item.ownerTeam}
+                        </option>
+                        {candidates.map((u) => (
                           <option key={u.id} value={u.id}>
                             {u.name}
                           </option>
@@ -1087,12 +1105,12 @@ function CommunicationTab({ detail, caseId }: { detail: CaseDetailDto; caseId: s
 
 function FilesTab({
   detail,
-  canEdit,
+  canManageFiles,
   refresh,
   caseId,
 }: {
   detail: CaseDetailDto;
-  canEdit: boolean;
+  canManageFiles: boolean;
   refresh: () => void;
   caseId: string;
 }) {
@@ -1160,7 +1178,7 @@ function FilesTab({
     <div className="panel">
       <div className="panelhead">
         <b>{t("Files")}</b>
-        {canEdit ? (
+        {canManageFiles ? (
           <>
             <input
               ref={inputRef}
@@ -1200,7 +1218,7 @@ function FilesTab({
                 <button className="textbutton" onClick={() => download(f.id, f.filename)}>
                   {t("Download")}
                 </button>
-                {canEdit ? (
+                {canManageFiles ? (
                   <button className="textbutton" onClick={() => remove(f.id)}>
                     {t("Delete")}
                   </button>
@@ -1312,14 +1330,14 @@ function ShareModal({
         <div className="accesschoice">
           <button className={level === "viewer" ? "active" : ""} onClick={() => setLevel("viewer")}>
             <b>{t("Viewer")}</b>
-            <span>{t("Can view case details")}</span>
+            <span>{t("Can view shared Case information allowed by their access")}</span>
           </button>
           <button
             className={level === "collaborator" ? "active" : ""}
             onClick={() => setLevel("collaborator")}
           >
             <b>{t("Collaborator")}</b>
-            <span>{t("Can edit tasks and upload files")}</span>
+            <span>{t("Can participate according to functional-team and Task permissions")}</span>
           </button>
         </div>
       </div>

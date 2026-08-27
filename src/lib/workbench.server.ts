@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   AccessLevel,
   CaseDetailDto,
+  CaseCapabilitiesDto,
   CaseDto,
   ChecklistDto,
   CurrentUser,
@@ -313,16 +314,26 @@ export async function getCaseDetail(
 ): Promise<CaseDetailDto | { error: "access_denied" | "not_found" }> {
   const identity = await loadIdentity(supabase, userId);
   if (!identity) return { error: "access_denied" };
-  const { data: fullRow, error } = await supabase
-    .from("cases")
-    .select(
-      "*, persons(full_name, email, employee_id, phone, lab_id, team_id, teams(name), manager:manager_id(full_name))",
-    )
-    .eq("id", caseId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  let operationalOnly = false;
-  let row: any = fullRow;
+  const { data: rawCapabilities, error: capabilitiesError } = await supabase.rpc(
+    "get_case_capabilities",
+    { _case_id: caseId },
+  );
+  if (capabilitiesError) throw new Error(capabilitiesError.message);
+  if (!rawCapabilities) return { error: "not_found" };
+  const capabilities = rawCapabilities as CaseCapabilitiesDto;
+  let operationalOnly = !capabilities.canViewFullCase;
+  let row: any = null;
+  if (capabilities.canViewFullCase) {
+    const { data: fullRow, error } = await supabase
+      .from("cases")
+      .select(
+        "*, persons(full_name, email, employee_id, phone, lab_id, team_id, teams(name), manager:manager_id(full_name))",
+      )
+      .eq("id", caseId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    row = fullRow;
+  }
   if (!row) {
     const { data: summary, error: summaryError } = await supabase.rpc(
       "get_operational_case_summary",
@@ -375,13 +386,12 @@ export async function getCaseDetail(
   ]);
 
   const myMembership = ((membersRes.data ?? []) as any[]).find((m) => m.user_id === userId);
-  const access = operationalOnly
-    ? "Scoped"
-    : computeAccess(identity, r, myMembership?.access_level);
+  const computedAccess = computeAccess(identity, r, myMembership?.access_level);
+  const access = operationalOnly && computedAccess === "None" ? "Scoped" : computedAccess;
   const nameOf = new Map<string, string>(
     ((profilesRes.data ?? []) as any[]).map((p) => [p.id, p.name]),
   );
-  const canSeeNotes = !operationalOnly && (access === "Owner" || access === "Collaborator");
+  const canSeeNotes = capabilities.canManageCase;
   const person = r.persons ?? {};
 
   const members: MemberDto[] = ((membersRes.data ?? []) as any[]).map((m) => ({
@@ -391,42 +401,58 @@ export async function getCaseDetail(
     accessLevel: m.access_level === "collaborator" ? "Collaborator" : "Viewer",
   }));
 
-  const checklist: ChecklistDto[] = ((checklistRes.data ?? []) as any[]).map((c) => ({
-    id: c.id,
-    title: c.title,
-    section: c.section,
-    status: c.status,
-    ownerId: c.owner_id,
-    ownerName: c.owner_id ? (nameOf.get(c.owner_id) ?? "") : "",
-    dueDate: c.due_date,
-    completedDate: c.completed_date,
-    completedByName: c.completed_by ? (nameOf.get(c.completed_by) ?? null) : null,
-    taskId: null,
-  }));
-
-  const itemIds = checklist.map((c) => c.id);
-  if (itemIds.length) {
-    const { data: taskLinks } = await supabase
-      .from("tasks")
-      .select("id,checklist_item_id")
-      .in("checklist_item_id", itemIds);
-    const linkOf = new Map<string, string>(
-      ((taskLinks ?? []) as any[]).map((t) => [t.checklist_item_id, t.id]),
-    );
-    for (const c of checklist) c.taskId = linkOf.get(c.id) ?? null;
+  const operationalTaskRows = (tasksRes.data ?? []) as any[];
+  const taskByChecklist = new Map<string, any>();
+  for (const task of operationalTaskRows) {
+    if (task.checklist_item_id) taskByChecklist.set(task.checklist_item_id, task);
   }
+  const taskById = new Map<string, any>(operationalTaskRows.map((task) => [task.id, task]));
+  const checklist: ChecklistDto[] = operationalOnly
+    ? []
+    : ((checklistRes.data ?? []) as any[]).map((c) => {
+        const task = taskByChecklist.get(c.id) ?? (c.task_id ? taskById.get(c.task_id) : null);
+        const status = task
+          ? task.status === "Completed"
+            ? "Completed"
+            : task.status === "Not Applicable"
+              ? "Not Required"
+              : "Open"
+          : c.status;
+        const ownerId = task ? task.owner_id : c.owner_id;
+        return {
+          id: c.id,
+          title: task?.title ?? c.title,
+          section: task?.owner_team ?? c.section,
+          status,
+          ownerId,
+          ownerName: task?.owner_name ?? (ownerId ? (nameOf.get(ownerId) ?? "") : ""),
+          dueDate: task?.due_date ?? c.due_date,
+          completedDate: task?.completed_at ?? c.completed_date,
+          completedByName: task
+            ? (task.completed_by_name ?? null)
+            : c.completed_by
+              ? (nameOf.get(c.completed_by) ?? null)
+              : null,
+          taskId: task?.id ?? c.task_id ?? null,
+          ownerTeam:
+            task?.owner_team ?? (c.section === "IT" || c.section === "Admin" ? c.section : "HR"),
+          canEdit: task ? task.can_edit === true : capabilities.canManageCase,
+        };
+      });
 
-  const history: HistoryDto[] = ((historyRes.data ?? []) as any[]).map((h) => ({
-    id: h.id,
-    actorName: h.actor_id ? (nameOf.get(h.actor_id) ?? "System") : "System",
-    action: h.action,
-    field: h.field,
-    oldValue: h.previous_value,
-    newValue: h.new_value,
-    at: h.created_at,
-  }));
+  const history: HistoryDto[] = (operationalOnly ? [] : ((historyRes.data ?? []) as any[])).map(
+    (h) => ({
+      id: h.id,
+      actorName: h.actor_id ? (nameOf.get(h.actor_id) ?? "System") : "System",
+      action: h.action,
+      field: h.field,
+      oldValue: h.previous_value,
+      newValue: h.new_value,
+      at: h.created_at,
+    }),
+  );
 
-  const files: FileDto[] = ((filesRes.data ?? []) as any[]).map((f) => ({
+  const files: FileDto[] = (operationalOnly ? [] : ((filesRes.data ?? []) as any[])).map((f) => ({
     id: f.id,
     filename: f.filename,
     size: f.size,
@@ -434,7 +460,9 @@ export async function getCaseDetail(
     at: f.created_at,
     uploadedByName: f.uploaded_by ? (nameOf.get(f.uploaded_by) ?? "") : "",
   }));
-  const workflow: WorkflowItemDto[] = ((workflowRes.data ?? []) as any[]).map((w) => ({
+  const workflow: WorkflowItemDto[] = (
+    operationalOnly ? [] : ((workflowRes.data ?? []) as any[])
+  ).map((w) => ({
     id: w.id,
     key: w.step_key,
     title: w.title,
@@ -445,7 +473,9 @@ export async function getCaseDetail(
     completedAt: w.completed_at,
     completedByName: w.completed_by ? (nameOf.get(w.completed_by) ?? null) : null,
   }));
-  const externalRequests: ExternalRequestDto[] = ((externalRes.data ?? []) as any[]).map((x) => ({
+  const externalRequests: ExternalRequestDto[] = (
+    operationalOnly ? [] : ((externalRes.data ?? []) as any[])
+  ).map((x) => ({
     id: x.id,
     workflowItemId: x.workflow_item_id,
     recipientEmail: x.recipient_email,
@@ -458,7 +488,7 @@ export async function getCaseDetail(
     createdAt: x.created_at,
     respondedAt: x.responded_at,
   }));
-  const tasks: TaskDto[] = ((tasksRes.data ?? []) as any[]).map((t) =>
+  const tasks: TaskDto[] = operationalTaskRows.map((t) =>
     toTaskDto(t, nameOf, t.person_name ?? person.full_name ?? "", t.case_type ?? r.case_type),
   );
 
@@ -516,6 +546,7 @@ export async function getCaseDetail(
     taskComments,
     externalRequests,
     assignableUsers,
+    capabilities,
   };
 }
 
@@ -1590,37 +1621,18 @@ export async function completeEmailTask(
 
 export async function assignChecklistOwner(
   supabase: Db,
-  userId: string,
+  _userId: string,
   input: { itemId: string; ownerId: string | null },
 ) {
-  const { data: item } = await supabase
-    .from("checklist_items")
-    .select("id,case_id,title")
-    .eq("id", input.itemId)
-    .maybeSingle();
-  if (!item) return { error: "not_found" as const };
-  const { error } = await supabase
-    .from("checklist_items")
-    .update({ owner_id: input.ownerId })
-    .eq("id", input.itemId);
+  const { data, error } = await supabase.rpc("assign_checklist_owner", {
+    _item_id: input.itemId,
+    _assignee_id: input.ownerId,
+  });
   if (error) {
     if (error.code === "42501") return { error: "forbidden" as const };
     throw new Error(error.message);
   }
-  const { data: assignee } = input.ownerId
-    ? await supabase.from("profiles").select("name").eq("id", input.ownerId).maybeSingle()
-    : { data: null };
-  await supabase.from("audit_logs").insert({
-    actor_id: userId,
-    entity_type: "checklist_item",
-    entity_id: input.itemId,
-    action: input.ownerId
-      ? `Assigned "${item.title}" to ${assignee?.name ?? "user"}`
-      : `Unassigned "${item.title}"`,
-    field: "owner_id",
-    new_value: input.ownerId,
-    case_id: item.case_id,
-  });
+  if (data === false) return { error: "forbidden" as const };
   return { ok: true as const };
 }
 
