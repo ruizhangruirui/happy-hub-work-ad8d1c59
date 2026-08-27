@@ -1,49 +1,62 @@
-# Team Workbench Phase 3 — Email Center V2
+# Team Workbench Phase 3 Closure — Email Center V2
 
-## Architecture
+## Architecture and Email Tasks
 
-All entry points use the single `/email` Compose route (`/email-center` remains a compatibility redirect). UI state is assembled into one Compose model and passed through deterministic modules:
+All entry points use the single `/email` Compose route (`/email-center` is a compatibility redirect):
 
-`Compose UI → email-compose variable/recipient service → attachment storage → outlookDraftService → audit RPC`
+`Case / Email Task → Template → Variable + Recipient Resolution → Attachments → Preview → Outlook Draft → Manual Send → Mark as Sent`
 
-The Case Detail and Email Task routes preselect Case and Task. Templates remain configuration rather than React business rules. Phase 1 lifecycle and Phase 2 checklist behavior are unchanged.
+Checklist rules explicitly declare `task_type = Email` and may select a compatible Published preferred template. Generated Tasks snapshot both `task_type` and `preferred_email_template_id`. Completed historical Tasks never change when a rule is edited; explicit rule synchronization updates only open Tasks. The frontend uses these fields for every Email Task, including custom Tasks, and contains no title-based Welcome Email detection.
 
 ## Templates and variables
 
-`email_templates` stores category, status, subject/body, recipient source, applicable Case types, version and archive/publish metadata. Published templates are normally offered in Compose; Draft and Archived records remain visible to template managers. `email_template_variables` holds template-only manual definitions. `email_variable_library` is the active global library with stable lowercase snake_case keys and deterministic source metadata.
+`email_templates` stores subject/body, recipient source, applicable Case types, version and publish/archive metadata. `email_template_variables` holds template-only manual definitions. `email_variable_library` is the active Global Library.
 
-The shared resolver scans Subject and Body, resolves Person/Employment/Onboarding/Offboarding values, formats dates by UI locale, applies manual/default values, reports missing required fields and removes empty optional tokens. Publishing validates every token against the global or template-specific definitions. Editing increments the template version; communication history stores the version and rendered subject.
+The resolver extracts tokens actually used by Subject and Body. It resolves Global and template-specific definitions, renders only referenced manual inputs, applies deterministic Person/Employment/Case/default data and reports missing required fields. Text, email, number, date, boolean and choice/dropdown controls are supported. A template-specific key cannot duplicate an active Global key.
+
+The parser first finds every broad `{{ ... }}` expression and then requires lowercase snake_case (`^[a-z][a-z0-9_]*$`). TypeScript and PostgreSQL publication validation reject dotted legacy keys, uppercase keys, hyphenated keys, empty expressions, unknown definitions and malformed delimiters. `email_templates.variables` is synchronized from Subject and Body; users do not maintain a competing token list.
 
 ## Recipients
 
-Templates explicitly select Personal Email, Company Email or Manual. Compose displays the selected address and permits a session-only override. It never silently falls back from company to personal email and never writes an override back to the Person profile.
+Templates select Personal Email, Company Email or Manual. Compose displays the resolved address and permits a session-only override. It never silently falls back from company to personal email and never writes the override to the Person profile.
 
-## Attachments
+## Attachments and Compose sessions
 
-Template attachment metadata is stored in `email_template_attachments`. One-off Case communication files use `email_additional_attachments`. Binary data is stored privately in the dedicated `email-attachments` Supabase Storage bucket with a 25 MB limit and an allowlist for PDF, DOCX, XLSX, PNG and JPEG. Storage paths use generated IDs and sanitized filenames. Short-lived signed URLs are produced only when preparing the local Outlook payload.
+Reusable metadata lives in `email_template_attachments`. One-off files live in `email_additional_attachments` and carry a client-generated `compose_session_id`. A file can be uploaded before required variables are complete with `communication_id = null`. After Draft Prepared, `bind_email_compose_attachments` securely links only files from the same session, Case and user.
 
-Template managers may add/remove reusable files. Authorized HR composers may add/remove Case-scoped one-off files. IT/Admin operational Task access alone does not grant HR attachment access. Files are never public.
+Linked files remain historical. Template attachment metadata is snapshotted into `email_communication_attachment_snapshots` at preparation, so later template edits cannot rewrite history. Unlinked files expire after 24 hours, are explicitly removed on Case/template change, and `cleanup_abandoned_email_attachments()` supports service-role orphan cleanup. A scheduled service must also remove the returned private Storage paths.
 
-## Outlook integration and fallback
+All binary objects remain private in the `email-attachments` bucket. PDF, DOCX, XLSX, PNG and JPEG are allowed up to 25 MB each. Short-lived signed URLs are regenerated immediately before Outlook preparation. Any Template or Additional Attachment signing failure blocks the action and names the failed file; nothing is silently omitted.
 
-`outlookDraftService.openDraft` first calls the optional localhost-only helper at `127.0.0.1:17873`. Its constrained payload contains To, Subject, Body and short-lived attachment URLs. The helper is expected to create and display a draft in Windows Outlook; it must never send automatically or expose arbitrary command execution.
+## Communication history
 
-If the helper is unavailable, the service opens a `mailto:` draft containing To, Subject and plain-text Body. Attachments cannot be reliably added through `mailto:`, so the UI warns the user before/after fallback and never reports them as included. Classic Outlook and New Outlook automation differ; full attachment integration therefore remains dependent on a compatible local helper installation.
+`email_communications` is the authoritative Case Communication source. Preparing creates `Draft Prepared`. A successful helper response records `Opened in Outlook`; an attempted mailto launch records the mode as `mailto`. Errors before opening leave the record at Draft Prepared. Explicit **Mark as Sent** records `Marked Sent`—never “Delivered.”
 
-## Task and communication history
+For a linked Email Task, Mark as Sent completes it through the existing secure Task status path. A general Case email without a Task updates only its communication. History exposes template/version, recipient, rendered subject, actor, timestamps and attachment metadata, but never the full body or expired signed URLs.
 
-Preparing a draft creates `Draft Prepared`. Opening Outlook records `Opened in Outlook` but does not complete the Task. Only the explicit **Mark as Sent** confirmation records `Marked Sent` and calls the existing authoritative Task status path. History stores Case/Task/template ID, template version, recipient, rendered subject, actor and timestamps—not the potentially sensitive email body. “Marked as sent” is not a delivery or read receipt.
+## Outlook helper
+
+The real helper is in `tools/outlook-helper/`. It is a .NET 8 Windows localhost service bound only to `127.0.0.1:17873`, exposes only health/preflight/draft endpoints and uses Classic Outlook COM to create and visibly `Display` a MailItem. It never calls `Send` and has no send endpoint.
+
+Build with `build.ps1`, produce a self-contained `win-x64` package with `publish.ps1`, then run `install-startup.ps1` for a per-user Startup shortcut. Configure semicolon-separated `TEAM_WORKBENCH_ALLOWED_ORIGINS` and `TEAM_WORKBENCH_ALLOWED_ATTACHMENT_HOSTS`.
+
+The helper enforces configured origins, Private Network preflight, HTTPS and allowlisted public attachment hosts, no redirects, approved MIME types, 10-file maximum, 25 MB per file and 50 MB total. It does not accept local paths and does not log body content, signed URLs or recipient data. Classic Outlook supports COM draft attachments; New Outlook generally does not and safely falls back.
+
+Email Center shows Full Draft Integration or Fallback Mode before the final action. Fallback opens a `mailto:` draft with To/Subject/Body and warns before opening when attachments must be added manually.
 
 ## Security
 
-- Compose requires an active HR user with Case access.
-- Template/variable management requires an authorized HR Admin/Operator.
-- HR email Tasks still use Task-level authorization; IT/Admin cannot bypass it through Email Center.
-- RLS protects templates, variables, communication history, metadata and private storage objects.
-- File type/size/path validation blocks executable and uncontrolled filenames.
-- No service-role secret is exposed to the browser or localhost helper.
-- Team Workbench never automatically sends email in Phase 3.
+- Compose requires an active HR user with Case access and `canComposeEmail`.
+- The global Case selector is server-filtered to eligible Cases.
+- Linked Tasks must be HR-owned explicit Email Tasks and pass Phase 2 Task authorization.
+- IT/Admin operational Task access does not grant template, attachment or communication access.
+- RLS protects templates, variables, communications, attachment metadata and Storage objects.
+- Audit records attachment upload/link/removal metadata, never file content or email body.
 
-## Known limitations
+## Validation status and limitations
 
-The browser cannot attach files through `mailto:`. Full attachment automation requires the separately installed compatible localhost Outlook helper. The app records user-confirmed “Marked as sent,” not Outlook delivery/read confirmation. Additional attachment cleanup occurs when the user removes a file; future scheduled orphan cleanup can be added without changing the Compose model.
+The TypeScript build, lint, unit tests, clean PostgreSQL migration/integration suite and production web build are automated in this repository. The helper includes a validation self-test in `build.ps1`, but this development machine is macOS without the .NET SDK. The Windows-target build and mandatory Classic Outlook manual scenario have therefore **not** been executed here.
+
+**Helper implemented; Windows Classic Outlook validation pending.**
+
+On the target HR workstation: start the helper, confirm Full Integration, prepare an email with Template and Additional Attachments, open the visible draft, verify To/Subject/Body/files and that it was not sent, manually send, return to Team Workbench, Mark as Sent and confirm the linked Task completes. New Outlook must fall back without crashing. “Marked Sent” remains a user confirmation, not an Outlook delivery/read receipt.

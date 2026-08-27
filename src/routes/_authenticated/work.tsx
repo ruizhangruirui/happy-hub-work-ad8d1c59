@@ -159,7 +159,9 @@ export function WorkPage() {
                 <Icon name="offboarding" /> {t("New Offboarding")}
               </button>
               <button
-                onClick={() => navigate({ to: "/email", search: { caseId: "", taskId: "" } })}
+                onClick={() =>
+                  navigate({ to: "/email", search: { caseId: "", taskId: "", templateId: "" } })
+                }
               >
                 <Icon name="mail" /> {t("Compose Email")}
               </button>

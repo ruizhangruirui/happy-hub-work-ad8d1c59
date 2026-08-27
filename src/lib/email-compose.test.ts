@@ -3,6 +3,7 @@ import {
   extractEmailVariableKeys,
   resolveEmailVariables,
   resolveRecipient,
+  referencedManualVariables,
   validateEmailTemplate,
 } from "./email-compose";
 import type { EmailVariableDto, TemplateDto } from "./types";
@@ -107,4 +108,40 @@ describe("Email Center V2 deterministic compose service", () => {
       "employee_name",
     ]);
   });
+
+  it("renders a referenced required Global Manual Variable", () => {
+    const meetingRoom = variable("meeting_room", {
+      displayName: "Meeting Room",
+      sourceType: "manual",
+      sourceField: null,
+      required: true,
+    });
+    const selected = template({
+      subject: "Office visit",
+      body: "Please come to {{meeting_room}}.",
+    });
+    expect(referencedManualVariables(selected, [meetingRoom])).toEqual([meetingRoom]);
+    const missing = resolveEmailVariables({
+      template: selected,
+      globalVariables: [meetingRoom],
+      sources: {},
+    });
+    expect(missing.missingRequired.map((item) => item.displayName)).toEqual(["Meeting Room"]);
+    const resolved = resolveEmailVariables({
+      template: selected,
+      globalVariables: [meetingRoom],
+      sources: {},
+      manualValues: { meeting_room: "Room A" },
+    });
+    expect(resolved.renderedBody).toBe("Please come to Room A.");
+  });
+
+  it.each(["{{person.first_name}}", "{{EmployeeName}}", "{{employee-name}}", "{{ }}"])(
+    "rejects malformed or legacy expression %s",
+    (expression) => {
+      expect(validateEmailTemplate(template({ body: `Hello ${expression}` }), globals)).toContain(
+        `Invalid variable: ${expression}`,
+      );
+    },
+  );
 });

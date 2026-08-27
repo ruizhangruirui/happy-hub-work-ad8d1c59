@@ -12,6 +12,7 @@ import { opErrorMessage } from "@/lib/errors";
 import { Badge, Empty, Icon, Loading, Modal } from "@/components/workbench/ui";
 import { supabase } from "@/integrations/supabase/client";
 import type { EmailVariableDto } from "@/lib/types";
+import { extractEmailVariableKeys } from "@/lib/email-compose";
 
 export const Route = createFileRoute("/_authenticated/templates")({
   head: () => ({
@@ -241,23 +242,8 @@ function GlobalVariables({
 }) {
   const { t } = useLang();
   const qc = useQueryClient();
-  const add = async () => {
-    const key = window.prompt(t("Variable Key"));
-    if (!key) return;
-    const name = window.prompt(t("Display Name"), key);
-    if (!name) return;
-    const source = window.prompt(t("Source Type"), "manual") || "manual";
-    const { error } = await (supabase as any).from("email_variable_library").insert({
-      variable_key: key,
-      display_name: name,
-      data_type: "text",
-      source_type: source,
-      required: false,
-      active: true,
-    });
-    if (error) toast.error(error.message);
-    else await qc.invalidateQueries({ queryKey: ["templates"] });
-  };
+  const [editingVariable, setEditingVariable] = useState<EmailVariableDto | null>(null);
+  const [isNewVariable, setIsNewVariable] = useState(false);
   const disable = async (variable: EmailVariableDto) => {
     const published =
       (
@@ -265,7 +251,7 @@ function GlobalVariables({
           .from("email_templates")
           .select("id", { count: "exact", head: true })
           .eq("status", "Published")
-          .contains("variables", [variable.key])
+          .or(`subject.ilike.%{{${variable.key}}}%,body_html.ilike.%{{${variable.key}}}%`)
       ).count ?? 0;
     if (published) {
       toast.error(`${variable.key} ${t("is used by")} ${published} ${t("Published templates")}`);
@@ -277,17 +263,6 @@ function GlobalVariables({
       .eq("variable_key", variable.key);
     await qc.invalidateQueries({ queryKey: ["templates"] });
   };
-  const edit = async (variable: EmailVariableDto) => {
-    const displayName = window.prompt(t("Display Name"), variable.displayName);
-    if (!displayName) return;
-    const description = window.prompt(t("Description"), variable.description ?? "") ?? "";
-    const { error } = await (supabase as any)
-      .from("email_variable_library")
-      .update({ display_name: displayName, description, updated_at: new Date().toISOString() })
-      .eq("variable_key", variable.key);
-    if (error) toast.error(error.message);
-    else await qc.invalidateQueries({ queryKey: ["templates"] });
-  };
   return (
     <section className="panel" style={{ marginTop: 16 }}>
       <div className="panelhead">
@@ -296,7 +271,23 @@ function GlobalVariables({
           <span>{t("Reusable deterministic email fields")}</span>
         </div>
         {canManage ? (
-          <button className="secondary" onClick={() => void add()}>
+          <button
+            className="secondary"
+            onClick={() => {
+              setIsNewVariable(true);
+              setEditingVariable({
+                key: "",
+                displayName: "",
+                dataType: "text",
+                sourceType: "manual",
+                sourceField: null,
+                required: false,
+                defaultValue: null,
+                description: null,
+                choices: [],
+              });
+            }}
+          >
             <Icon name="plus" /> {t("Add Variable")}
           </button>
         ) : null}
@@ -307,14 +298,189 @@ function GlobalVariables({
             {`{{${variable.key}}}`} · {variable.displayName} · {variable.sourceType}
             {canManage ? (
               <>
-                <button onClick={() => void edit(variable)}>{t("Edit")}</button>
+                <button
+                  onClick={() => {
+                    setIsNewVariable(false);
+                    setEditingVariable(variable);
+                  }}
+                >
+                  {t("Edit")}
+                </button>
                 <button onClick={() => void disable(variable)}>×</button>
               </>
             ) : null}
           </span>
         ))}
       </div>
+      {editingVariable ? (
+        <VariableLibraryModal
+          variable={editingVariable}
+          isNew={isNewVariable}
+          close={() => setEditingVariable(null)}
+          saved={async () => {
+            setEditingVariable(null);
+            await qc.invalidateQueries({ queryKey: ["templates"] });
+          }}
+        />
+      ) : null}
     </section>
+  );
+}
+
+function VariableLibraryModal({
+  variable,
+  isNew,
+  close,
+  saved,
+}: {
+  variable: EmailVariableDto;
+  isNew: boolean;
+  close: () => void;
+  saved: () => Promise<void>;
+}) {
+  const { t } = useLang();
+  const [form, setForm] = useState(variable);
+  const [busy, setBusy] = useState(false);
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    const payload = {
+      variable_key: form.key,
+      display_name: form.displayName,
+      data_type: form.dataType,
+      source_type: form.sourceType,
+      source_field: form.sourceType === "manual" ? null : form.sourceField,
+      required: form.required,
+      default_value: form.defaultValue,
+      description: form.description,
+      choices: form.choices ?? [],
+      active: true,
+      updated_at: new Date().toISOString(),
+    };
+    const query = (supabase as any).from("email_variable_library");
+    const { error } = isNew
+      ? await query.insert(payload)
+      : await query.update(payload).eq("variable_key", variable.key);
+    setBusy(false);
+    if (error) toast.error(error.message);
+    else await saved();
+  };
+  return (
+    <Modal title={t(isNew ? "Add Variable" : "Edit Variable")} close={close}>
+      <form className="userform" onSubmit={submit}>
+        <label>
+          {t("Variable Key")}
+          <input
+            required
+            pattern="[a-z][a-z0-9_]*"
+            disabled={!isNew}
+            value={form.key}
+            onChange={(event) => setForm({ ...form, key: event.target.value })}
+          />
+        </label>
+        <label>
+          {t("Display Name")}
+          <input
+            required
+            value={form.displayName}
+            onChange={(event) => setForm({ ...form, displayName: event.target.value })}
+          />
+        </label>
+        <div className="two">
+          <label>
+            {t("Data Type")}
+            <select
+              value={form.dataType}
+              onChange={(event) => setForm({ ...form, dataType: event.target.value })}
+            >
+              {["text", "date", "email", "number", "boolean", "dropdown", "choice"].map((type) => (
+                <option key={type}>{type}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            {t("Source")}
+            <select
+              value={form.sourceType}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  sourceType: event.target.value,
+                  sourceField: event.target.value === "manual" ? null : form.sourceField,
+                })
+              }
+            >
+              {[
+                "person",
+                "employment",
+                "onboarding_case",
+                "offboarding_case",
+                "manual",
+                "current_user",
+                "fixed",
+              ].map((source) => (
+                <option key={source}>{source.replaceAll("_", " ")}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <label>
+          {t("Source Field")}
+          <input
+            disabled={form.sourceType === "manual"}
+            value={form.sourceField ?? ""}
+            onChange={(event) => setForm({ ...form, sourceField: event.target.value || null })}
+          />
+        </label>
+        <label>
+          {t("Default Value")}
+          <input
+            value={form.defaultValue ?? ""}
+            onChange={(event) => setForm({ ...form, defaultValue: event.target.value || null })}
+          />
+        </label>
+        <label>
+          {t("Description")}
+          <textarea
+            value={form.description ?? ""}
+            onChange={(event) => setForm({ ...form, description: event.target.value || null })}
+          />
+        </label>
+        {["dropdown", "choice"].includes(form.dataType) ? (
+          <label>
+            {t("Choices")}
+            <input
+              value={(form.choices ?? []).join(", ")}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  choices: event.target.value
+                    .split(",")
+                    .map((choice) => choice.trim())
+                    .filter(Boolean),
+                })
+              }
+            />
+          </label>
+        ) : null}
+        <label>
+          <input
+            type="checkbox"
+            checked={form.required}
+            onChange={(event) => setForm({ ...form, required: event.target.checked })}
+          />{" "}
+          {t("Required")}
+        </label>
+        <div className="modalactions">
+          <button type="button" className="secondary" onClick={close}>
+            {t("Cancel")}
+          </button>
+          <button className="primary" disabled={busy}>
+            {t("Save Changes")}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -434,19 +600,10 @@ function TemplateModal({
         : "Draft") as "Draft" | "Published" | "Archived",
     subject: template?.subject ?? "",
     body: template?.body ?? "",
-    variables:
-      template?.variables.join("\n") ??
-      "person.first_name\nperson.full_name\ncase.start_date\nmanager.name",
     description: template?.description ?? "",
     recipientSource: template?.recipientSource ?? "personal_email",
     applicableCaseTypes: template?.applicableCaseTypes ?? ["onboarding", "offboarding"],
-    manualVariables:
-      template?.variableDefinitions
-        .map(
-          (v) =>
-            `${v.key}|${v.displayName}|${v.dataType}|${v.required ? "required" : "optional"}|${v.defaultValue ?? ""}`,
-        )
-        .join("\n") ?? "",
+    manualVariables: template?.variableDefinitions ?? [],
   });
   const set = (key: keyof typeof form) => (event: { target: { value: string } }) =>
     setForm((current) => ({ ...current, [key]: event.target.value }));
@@ -464,35 +621,11 @@ function TemplateModal({
           status: form.status,
           subject: form.subject.trim(),
           body: form.body,
-          variables: form.variables
-            .split(/[\n,]/)
-            .map((v) => v.trim())
-            .filter(Boolean),
+          variables: extractEmailVariableKeys(form.subject, form.body),
           description: form.description || undefined,
           recipientSource: form.recipientSource as "personal_email" | "company_email" | "manual",
           applicableCaseTypes: form.applicableCaseTypes,
-          variableDefinitions: form.manualVariables
-            .split("\n")
-            .filter(Boolean)
-            .map((line) => {
-              const [
-                key,
-                displayName,
-                dataType = "text",
-                requirement = "optional",
-                defaultValue = "",
-              ] = line.split("|").map((part) => part.trim());
-              return {
-                key: key!,
-                displayName: displayName || key!,
-                dataType: dataType as "text",
-                sourceType: "manual" as const,
-                sourceField: null,
-                required: requirement === "required",
-                defaultValue: defaultValue || null,
-                description: null,
-              };
-            }),
+          variableDefinitions: form.manualVariables,
         },
       });
       if ("error" in res) {
@@ -583,45 +716,202 @@ function TemplateModal({
           {t("Subject")}
           <input value={form.subject} onChange={set("subject")} required maxLength={300} />
         </label>
-        <label>
-          {t("Variables")}
-          <textarea
-            value={form.variables}
-            onChange={set("variables")}
-            rows={4}
-            placeholder="person.first_name"
-          />
-        </label>
         <div className="chips">
           {globalVariables.map((definition) => (
-            <button
-              type="button"
-              className="variable"
-              key={definition.key}
-              onClick={() =>
-                setForm((f) => ({
-                  ...f,
-                  variables: [
-                    ...new Set([...f.variables.split(/\n/).filter(Boolean), definition.key]),
-                  ].join("\n"),
-                  body: `${f.body}{{${definition.key}}}`,
-                }))
-              }
-            >
-              {t("Insert Variable")} {`{{${definition.key}}}`}
-            </button>
+            <span className="actions" key={definition.key}>
+              <button
+                type="button"
+                className="variable"
+                onClick={() => setForm((f) => ({ ...f, body: `${f.body}{{${definition.key}}}` }))}
+              >
+                {t("Insert into Body")} {`{{${definition.key}}}`}
+              </button>
+              <button
+                type="button"
+                className="variable"
+                onClick={() =>
+                  setForm((f) => ({ ...f, subject: `${f.subject}{{${definition.key}}}` }))
+                }
+              >
+                {t("Insert into Subject")} {`{{${definition.key}}}`}
+              </button>
+            </span>
           ))}
         </div>
-        <label>
-          {t("Template-specific Manual Variables")}
-          <textarea
-            rows={4}
-            value={form.manualVariables}
-            onChange={set("manualVariables")}
-            placeholder="meeting_room|Meeting Room|text|required|Room A"
-          />
-          <small>{t("One per line: key|display name|type|required or optional|default")}</small>
-        </label>
+        <fieldset>
+          <legend>{t("Template-specific Manual Variables")}</legend>
+          {form.manualVariables.map((variable, index) => (
+            <div className="actions" key={variable.key}>
+              <b>{`{{${variable.key}}}`}</b>
+              <span>
+                {variable.displayName} · {variable.dataType} ·{" "}
+                {variable.required ? t("Required") : t("Optional")}
+              </span>
+              <button
+                type="button"
+                className="danger"
+                onClick={() =>
+                  setForm((current) => ({
+                    ...current,
+                    manualVariables: current.manualVariables.filter(
+                      (_, itemIndex) => itemIndex !== index,
+                    ),
+                  }))
+                }
+              >
+                {t("Remove")}
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            className="secondary"
+            onClick={() =>
+              setForm((current) => ({
+                ...current,
+                manualVariables: [
+                  ...current.manualVariables,
+                  {
+                    key: `manual_${current.manualVariables.length + 1}`,
+                    displayName: "Manual Field",
+                    dataType: "text",
+                    sourceType: "manual",
+                    sourceField: null,
+                    required: false,
+                    defaultValue: null,
+                    description: null,
+                    choices: [],
+                  },
+                ],
+              }))
+            }
+          >
+            <Icon name="plus" /> {t("Add Manual Variable")}
+          </button>
+          {form.manualVariables.map((variable, index) => (
+            <div className="userform two compact" key={`${variable.key}-editor`}>
+              <label>
+                {t("Variable Key")}
+                <input
+                  value={variable.key}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      manualVariables: current.manualVariables.map((item, itemIndex) =>
+                        itemIndex === index ? { ...item, key: event.target.value } : item,
+                      ),
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                {t("Display Name")}
+                <input
+                  value={variable.displayName}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      manualVariables: current.manualVariables.map((item, itemIndex) =>
+                        itemIndex === index ? { ...item, displayName: event.target.value } : item,
+                      ),
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                {t("Data Type")}
+                <select
+                  value={variable.dataType}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      manualVariables: current.manualVariables.map((item, itemIndex) =>
+                        itemIndex === index ? { ...item, dataType: event.target.value } : item,
+                      ),
+                    }))
+                  }
+                >
+                  {["text", "date", "email", "number", "boolean", "dropdown", "choice"].map(
+                    (type) => (
+                      <option key={type}>{type}</option>
+                    ),
+                  )}
+                </select>
+              </label>
+              <label>
+                {t("Default Value")}
+                <input
+                  value={variable.defaultValue ?? ""}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      manualVariables: current.manualVariables.map((item, itemIndex) =>
+                        itemIndex === index
+                          ? { ...item, defaultValue: event.target.value || null }
+                          : item,
+                      ),
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={variable.required}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      manualVariables: current.manualVariables.map((item, itemIndex) =>
+                        itemIndex === index ? { ...item, required: event.target.checked } : item,
+                      ),
+                    }))
+                  }
+                />{" "}
+                {t("Required")}
+              </label>
+              <label>
+                {t("Description")}
+                <input
+                  value={variable.description ?? ""}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      manualVariables: current.manualVariables.map((item, itemIndex) =>
+                        itemIndex === index
+                          ? { ...item, description: event.target.value || null }
+                          : item,
+                      ),
+                    }))
+                  }
+                />
+              </label>
+              {["dropdown", "choice"].includes(variable.dataType) ? (
+                <label>
+                  {t("Choices")}
+                  <input
+                    value={(variable.choices ?? []).join(", ")}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        manualVariables: current.manualVariables.map((item, itemIndex) =>
+                          itemIndex === index
+                            ? {
+                                ...item,
+                                choices: event.target.value
+                                  .split(",")
+                                  .map((choice) => choice.trim())
+                                  .filter(Boolean),
+                              }
+                            : item,
+                        ),
+                      }))
+                    }
+                  />
+                </label>
+              ) : null}
+            </div>
+          ))}
+        </fieldset>
         <label>
           {t("Body")}
           <textarea value={form.body} onChange={set("body")} rows={12} required maxLength={20000} />

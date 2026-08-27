@@ -16,10 +16,23 @@ export interface OutlookAttachment extends EmailAttachmentDto {
 }
 
 const TOKEN = /\{\{\s*([a-z][a-z0-9_]*)\s*\}\}/g;
+const EXPRESSION = /\{\{([^}]*)\}\}/g;
 export const EMAIL_VARIABLE_KEY = /^[a-z][a-z0-9_]*$/;
 
 export function extractEmailVariableKeys(subject: string, body: string): string[] {
   return [...new Set([...`${subject}\n${body}`.matchAll(TOKEN)].map((match) => match[1]!))];
+}
+
+export function referencedManualVariables(
+  template: TemplateDto,
+  globalVariables: EmailVariableDto[],
+): EmailVariableDto[] {
+  const keys = new Set(extractEmailVariableKeys(template.subject, template.body));
+  const definitions = new Map(globalVariables.map((item) => [item.key, item]));
+  for (const item of template.variableDefinitions) definitions.set(item.key, item);
+  return [...keys]
+    .map((key) => definitions.get(key))
+    .filter((item): item is EmailVariableDto => Boolean(item && item.sourceType === "manual"));
 }
 
 export function validateEmailTemplate(
@@ -34,16 +47,27 @@ export function validateEmailTemplate(
   if (!template.subject.trim()) errors.push("Subject is required");
   if (!template.body.trim()) errors.push("Body is required");
   if (!template.recipientSource) errors.push("Recipient source is required");
+  const globalKeys = new Set(globalVariables.map((definition) => definition.key));
+  for (const definition of template.variableDefinitions) {
+    if (globalKeys.has(definition.key)) {
+      errors.push(`Template variable duplicates active global variable: ${definition.key}`);
+    }
+  }
   const definitions = new Map(
     [...globalVariables, ...template.variableDefinitions].map((definition) => [
       definition.key,
       definition,
     ]),
   );
-  for (const key of extractEmailVariableKeys(template.subject, template.body)) {
-    if (!EMAIL_VARIABLE_KEY.test(key)) errors.push(`Invalid variable key: ${key}`);
+  const combined = `${template.subject}\n${template.body}`;
+  for (const match of combined.matchAll(EXPRESSION)) {
+    const raw = match[1] ?? "";
+    const key = raw.trim();
+    if (!EMAIL_VARIABLE_KEY.test(key)) errors.push(`Invalid variable: {{${raw}}}`);
     else if (!definitions.has(key)) errors.push(`Unknown variable: {{${key}}}`);
   }
+  if ((combined.match(/\{\{/g)?.length ?? 0) !== (combined.match(/\}\}/g)?.length ?? 0))
+    errors.push("Malformed variable delimiter");
   return errors;
 }
 

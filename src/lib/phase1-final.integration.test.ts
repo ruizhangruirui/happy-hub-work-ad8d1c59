@@ -945,6 +945,93 @@ describe("Phase 3 Email Center — PostgreSQL security and history", () => {
     expect(result.rows[0]!.errors).toContain("Unknown variable: {{unknown_xyz}}");
   });
 
+  it.each(["{{person.first_name}}", "{{EmployeeName}}", "{{employee-name}}", "{{ }}"])(
+    "rejects malformed or legacy publication token %s in PostgreSQL",
+    async (token) => {
+      const inserted = await asUser<{ id: string }>(
+        ADMIN,
+        `insert into public.email_templates(name,category,owner_id,created_by,status,subject,body_html,variables)
+         values('Malformed','General',$1,$1,'Draft','Hello',$2,'[]') returning id`,
+        [ADMIN, token],
+      );
+      const result = await asUser<{ errors: string[] }>(
+        ADMIN,
+        "select public.validate_email_template_for_publish($1) errors",
+        [inserted.rows[0]!.id],
+      );
+      expect(result.rows[0]!.errors.some((error) => error.startsWith("Invalid variable:"))).toBe(
+        true,
+      );
+      await expect(
+        asUser(ADMIN, "update public.email_templates set status='Published' where id=$1", [
+          inserted.rows[0]!.id,
+        ]),
+      ).rejects.toThrow();
+    },
+  );
+
+  it("snapshots a Checklist Email Task preferred template on Case generation", async () => {
+    const template = await db.query<{ id: string }>(
+      "select id from public.email_templates where status='Published' limit 1",
+    );
+    await db.query(
+      `update public.checklist_template_items
+       set task_type='Email',preferred_email_template_id=$1
+       where template_key='onb_hr_welcome'`,
+      [template.rows[0]!.id],
+    );
+    const created = await createOnboarding(ADMIN, TEAM_A, "P3-MAPPING");
+    const task = await db.query<{
+      task_type: string;
+      preferred_email_template_id: string;
+      snapshot_template_id: string;
+    }>(
+      `select task_type,preferred_email_template_id::text,
+        source_snapshot->>'preferredEmailTemplateId' snapshot_template_id
+       from public.tasks where case_id=$1 and default_task_key='onb_hr_welcome'`,
+      [created.rows[0]!.result.caseId],
+    );
+    expect(task.rows[0]).toEqual({
+      task_type: "Email",
+      preferred_email_template_id: template.rows[0]!.id,
+      snapshot_template_id: template.rows[0]!.id,
+    });
+  });
+
+  it("isolates and binds additional attachments by compose session", async () => {
+    const created = await createOnboarding(ADMIN, TEAM_A, "P3-ATTACH");
+    const caseId = created.rows[0]!.result.caseId;
+    const template = await db.query<{ id: string; version: number }>(
+      "select id,version from public.email_templates where status='Published' limit 1",
+    );
+    const sessionA = "aaaaaaaa-0000-4000-8000-000000000001";
+    const sessionB = "bbbbbbbb-0000-4000-8000-000000000002";
+    await asUser(
+      ADMIN,
+      `insert into public.email_additional_attachments(case_id,compose_session_id,filename,storage_path,content_type,size,uploaded_by)
+       values($1,$2,'A.pdf','additional/a.pdf','application/pdf',10,$4),
+             ($1,$3,'B.pdf','additional/b.pdf','application/pdf',10,$4)`,
+      [caseId, sessionA, sessionB, ADMIN],
+    );
+    const communication = await asUser<{ id: string }>(
+      ADMIN,
+      "select public.record_email_event($1,null,$2,$3,'peter@example.com','General','Draft Prepared',null) id",
+      [caseId, template.rows[0]!.id, template.rows[0]!.version],
+    );
+    await asUser(ADMIN, "select public.bind_email_compose_attachments($1,$2)", [
+      sessionA,
+      communication.rows[0]!.id,
+    ]);
+    const rows = await db.query<{ filename: string; linked: boolean }>(
+      "select filename,communication_id is not null linked from public.email_additional_attachments where case_id=$1 order by filename",
+      [caseId],
+    );
+    expect(rows.rows).toEqual([
+      { filename: "A.pdf", linked: true },
+      { filename: "B.pdf", linked: false },
+    ]);
+  });
+
   it("does not complete an email Task until HR explicitly marks it sent", async () => {
     const created = await createOnboarding(ADMIN, TEAM_A, "P3-EMAIL");
     const caseId = created.rows[0]!.result.caseId;

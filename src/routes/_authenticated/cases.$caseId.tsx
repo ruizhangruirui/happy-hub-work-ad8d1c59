@@ -424,15 +424,21 @@ function TasksTab({
                           {t("Comment")}
                         </button>
                       ) : null}
-                      {task.canEdit &&
-                      task.title.toLowerCase().includes("welcome email") &&
+                      {detail.capabilities.canComposeEmail &&
+                      task.canEdit &&
+                      task.ownerTeam === "HR" &&
+                      task.taskType === "Email" &&
                       task.status !== "Completed" ? (
                         <button
                           className="primary emailtaskbutton"
                           onClick={() =>
                             navigate({
                               to: "/email",
-                              search: { caseId: detail.case.id, taskId: task.id },
+                              search: {
+                                caseId: detail.case.id,
+                                taskId: task.id,
+                                templateId: task.preferredEmailTemplateId ?? "",
+                              },
                             })
                           }
                         >
@@ -1063,37 +1069,71 @@ function ChecklistTab({
 function CommunicationTab({ detail, caseId }: { detail: CaseDetailDto; caseId: string }) {
   const { t, lang } = useLang();
   const navigate = useNavigate();
-  const drafts = detail.history.filter((h) => h.action === "Email draft saved");
+  const communications = detail.communications;
   return (
     <div className="panel">
       <div className="panelhead">
         <b>{t("Communication")}</b>
-        <button
-          className="primary"
-          onClick={() => navigate({ to: "/email", search: { caseId, taskId: "" } })}
-        >
-          <Icon name="mail" /> {t("Compose Email")}
-        </button>
+        {detail.capabilities.canComposeEmail ? (
+          <button
+            className="primary"
+            onClick={() =>
+              navigate({ to: "/email", search: { caseId, taskId: "", templateId: "" } })
+            }
+          >
+            <Icon name="mail" /> {t("Compose Email")}
+          </button>
+        ) : null}
       </div>
-      {drafts.length === 0 ? (
+      {communications.length === 0 ? (
         <Empty
           icon="mail"
           title={t("No communications yet.")}
-          action={t("Send the first email")}
-          onAction={() => navigate({ to: "/email", search: { caseId, taskId: "" } })}
+          action={detail.capabilities.canComposeEmail ? t("Send the first email") : undefined}
+          onAction={
+            detail.capabilities.canComposeEmail
+              ? () => navigate({ to: "/email", search: { caseId, taskId: "", templateId: "" } })
+              : undefined
+          }
         />
       ) : (
         <div className="communications">
-          {drafts.map((d) => (
-            <div className="comm" key={d.id}>
+          {communications.map((communication) => (
+            <div className="comm" key={communication.communicationId}>
               <span className="mailicon">
                 <Icon name="mail" />
               </span>
               <div>
-                <b>{d.action}</b>
+                <b>{communication.templateName}</b>
                 <span>
-                  {d.actorName} · {fmtDateTime(d.at, lang)}
+                  {t("To")}: {communication.recipient}
                 </span>
+                <span>
+                  {t("Template")}: {communication.templateName} · v
+                  {communication.templateVersion ?? "—"}
+                </span>
+                <span>
+                  {t("Subject")}: {communication.renderedSubject}
+                </span>
+                <span>
+                  {t("State")}: {t(communication.state)}
+                  {communication.outlookMode ? ` · ${communication.outlookMode}` : ""}
+                </span>
+                <span>
+                  {t("Prepared by")} {communication.preparedBy} ·{" "}
+                  {fmtDateTime(communication.preparedAt, lang)}
+                </span>
+                {communication.markedSentAt ? (
+                  <span>
+                    {t("Marked Sent")}: {fmtDateTime(communication.markedSentAt, lang)}
+                  </span>
+                ) : null}
+                {communication.attachments.length ? (
+                  <span>
+                    {t("Attachments")}:{" "}
+                    {communication.attachments.map((attachment) => attachment.filename).join(", ")}
+                  </span>
+                ) : null}
               </div>
             </div>
           ))}

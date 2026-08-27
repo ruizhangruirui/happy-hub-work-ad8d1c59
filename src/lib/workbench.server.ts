@@ -160,6 +160,8 @@ function toTaskDto(
     priority: t.priority,
     status: t.status,
     email: t.task_type === "Email",
+    taskType: t.task_type === "Email" ? "Email" : "Task",
+    preferredEmailTemplateId: t.preferred_email_template_id ?? null,
     ownerId: t.owner_id,
     ownerName: t.owner_name ?? (t.owner_id ? (nameOf.get(t.owner_id) ?? "") : ""),
     checklistItemId: t.checklist_item_id,
@@ -357,6 +359,7 @@ export async function getCaseDetail(
     externalRes,
     tasksRes,
     operationalTeamsRes,
+    communicationsRes,
   ] = await Promise.all([
     supabase
       .from("case_members")
@@ -384,6 +387,13 @@ export async function getCaseDetail(
       .order("created_at", { ascending: false }),
     supabase.rpc("list_operational_tasks", { _case_id: caseId }),
     supabase.from("user_operational_teams").select("user_id,owner_team"),
+    supabase
+      .from("email_communications")
+      .select(
+        "*, email_templates(name), email_additional_attachments(id,filename,size,content_type), email_communication_attachment_snapshots(id,filename,size,content_type)",
+      )
+      .eq("case_id", caseId)
+      .order("prepared_at", { ascending: false }),
   ]);
 
   const myMembership = ((membersRes.data ?? []) as any[]).find((m) => m.user_id === userId);
@@ -525,6 +535,31 @@ export async function getCaseDetail(
       operationalTeams: operationalTeamsOf.get(p.id) ?? [],
     }));
 
+  const communications = ((communicationsRes.data ?? []) as any[]).map((communication) => ({
+    communicationId: communication.id,
+    taskId: communication.task_id ?? null,
+    templateId: communication.template_id ?? null,
+    templateName: communication.email_templates?.name ?? "Email",
+    templateVersion: communication.template_version ?? null,
+    recipient: communication.recipient,
+    renderedSubject: communication.rendered_subject,
+    state: communication.state,
+    outlookMode: communication.outlook_mode ?? null,
+    preparedBy: nameOf.get(communication.prepared_by) ?? "User",
+    preparedAt: communication.prepared_at,
+    openedAt: communication.opened_at ?? null,
+    markedSentAt: communication.marked_sent_at ?? null,
+    attachments: [
+      ...((communication.email_communication_attachment_snapshots ?? []) as any[]),
+      ...((communication.email_additional_attachments ?? []) as any[]),
+    ].map((attachment) => ({
+      id: attachment.id,
+      filename: attachment.filename,
+      size: attachment.size,
+      contentType: attachment.content_type ?? null,
+    })),
+  }));
+
   return {
     case: {
       ...toCaseDto(r, access, nameOf),
@@ -550,6 +585,7 @@ export async function getCaseDetail(
     externalRequests,
     assignableUsers,
     capabilities,
+    communications,
   };
 }
 
@@ -1275,6 +1311,7 @@ export async function listTemplates(
         required: Boolean(v.required),
         defaultValue: v.default_value ?? null,
         description: v.description ?? null,
+        choices: Array.isArray(v.choices) ? v.choices : [],
       })),
       attachments: ((t.email_template_attachments ?? []) as any[]).map((a) => ({
         id: a.id,
@@ -1295,6 +1332,7 @@ export async function listTemplates(
       required: Boolean(v.required),
       defaultValue: v.default_value ?? null,
       description: v.description ?? null,
+      choices: Array.isArray(v.choices) ? v.choices : [],
     })),
     canManageTemplates: ["admin", "operator"].includes(identity.role),
   };
@@ -1304,21 +1342,36 @@ export async function listChecklistTemplateItems(
   supabase: Db,
   userId: string,
 ): Promise<
-  | { items: ChecklistTemplateItemDto[]; templates: ChecklistTemplateDto[] }
+  | {
+      items: ChecklistTemplateItemDto[];
+      templates: ChecklistTemplateDto[];
+      emailTemplates: { id: string; name: string; applicableCaseTypes: string[] }[];
+    }
   | { error: "access_denied" }
 > {
   if (!(await loadIdentity(supabase, userId))) return { error: "access_denied" };
-  const [itemsResult, templatesResult] = await Promise.all([
+  const [itemsResult, templatesResult, emailTemplatesResult] = await Promise.all([
     supabase
       .from("checklist_template_items")
       .select("*, checklist_templates(name,version)")
       .order("case_type")
       .order("sort_order"),
     supabase.from("checklist_templates").select("*").order("case_type").order("name"),
+    supabase
+      .from("email_templates")
+      .select("id,name,applicable_case_types")
+      .eq("status", "Published")
+      .order("name"),
   ]);
   if (itemsResult.error) throw new Error(itemsResult.error.message);
   if (templatesResult.error) throw new Error(templatesResult.error.message);
+  if (emailTemplatesResult.error) throw new Error(emailTemplatesResult.error.message);
   return {
+    emailTemplates: ((emailTemplatesResult.data ?? []) as any[]).map((template) => ({
+      id: template.id,
+      name: template.name,
+      applicableCaseTypes: template.applicable_case_types ?? [],
+    })),
     templates: ((templatesResult.data ?? []) as any[]).map((template) => ({
       id: template.id,
       key: template.template_key,
@@ -1346,6 +1399,8 @@ export async function listChecklistTemplateItems(
       dueReference: item.due_reference ?? "manual",
       dueOffsetDays: Number(item.due_offset_days ?? 0),
       sortOrder: Number(item.sort_order ?? 0),
+      taskType: item.task_type === "Email" ? "Email" : "Task",
+      preferredEmailTemplateId: item.preferred_email_template_id ?? null,
     })),
   };
 }
@@ -1368,6 +1423,8 @@ export async function saveChecklistTemplateItem(
     dueReference: "start_date" | "contract_end_date" | "last_working_day" | "manual";
     dueOffsetDays: number;
     sortOrder: number;
+    taskType: "Task" | "Email";
+    preferredEmailTemplateId?: string | null | undefined;
   },
 ) {
   const identity = await loadIdentity(supabase, userId);
@@ -1395,6 +1452,9 @@ export async function saveChecklistTemplateItem(
     due_reference: input.dueReference,
     due_offset_days: input.dueOffsetDays,
     sort_order: input.sortOrder,
+    task_type: input.taskType,
+    preferred_email_template_id:
+      input.taskType === "Email" ? (input.preferredEmailTemplateId ?? null) : null,
     updated_at: new Date().toISOString(),
   };
   const operation = input.id
@@ -1490,6 +1550,12 @@ export async function listPublishedTemplates(supabase: Db, userId: string) {
   return "error" in result
     ? result
     : { ...result, templates: result.templates.filter((t) => t.status === "Published") };
+}
+
+export async function listEmailEligibleCaseIds(supabase: Db, _userId: string) {
+  const { data, error } = await supabase.rpc("list_email_eligible_case_ids");
+  if (error) throw new Error(error.message);
+  return { caseIds: (data ?? []) as string[] };
 }
 
 export interface SaveTemplateInput {
@@ -1654,6 +1720,7 @@ export async function saveEmailDraft(
     _subject: input.subject,
     _state: "Draft Prepared",
     _communication_id: null,
+    _outlook_mode: null,
   });
   if (error) {
     if (error.code === "42501") return { error: "forbidden" as const };
@@ -1673,6 +1740,7 @@ export async function recordEmailOpened(
     templateVersion: number;
     subject: string;
     recipient: string;
+    outlookMode: "desktop_bridge" | "mailto";
   },
 ) {
   const { error } = await supabase.rpc("record_email_event", {
@@ -1684,6 +1752,7 @@ export async function recordEmailOpened(
     _subject: input.subject,
     _state: "Opened in Outlook",
     _communication_id: input.communicationId,
+    _outlook_mode: input.outlookMode,
   });
   if (error) {
     if (error.code === "42501") return { error: "forbidden" as const };
@@ -1692,11 +1761,27 @@ export async function recordEmailOpened(
   return { ok: true as const };
 }
 
+export async function bindEmailComposeAttachments(
+  supabase: Db,
+  _userId: string,
+  input: { composeSessionId: string; communicationId: string },
+) {
+  const { data, error } = await supabase.rpc("bind_email_compose_attachments", {
+    _compose_session_id: input.composeSessionId,
+    _communication_id: input.communicationId,
+  });
+  if (error) {
+    if (error.code === "42501") return { error: "forbidden" as const };
+    throw new Error(error.message);
+  }
+  return { ok: true as const, bound: Number(data ?? 0) };
+}
+
 export async function completeEmailTask(
   supabase: Db,
   userId: string,
   input: {
-    taskId: string;
+    taskId?: string | undefined;
     caseId: string;
     templateId: string;
     subject: string;
@@ -1709,7 +1794,7 @@ export async function completeEmailTask(
   const identity = await loadIdentity(supabase, userId);
   if (!identity) return { error: "access_denied" as const };
   const { data, error } = await supabase.rpc("record_email_event", {
-    _task_id: input.taskId,
+    _task_id: input.taskId ?? null,
     _case_id: input.caseId,
     _template_id: input.templateId,
     _template_version: input.templateVersion,
@@ -1717,6 +1802,7 @@ export async function completeEmailTask(
     _recipient: input.recipient,
     _state: "Marked Sent",
     _communication_id: input.communicationId,
+    _outlook_mode: null,
   });
   if (error) {
     if (error.code === "42501") return { error: "forbidden" as const };

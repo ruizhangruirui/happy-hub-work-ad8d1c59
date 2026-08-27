@@ -310,6 +310,8 @@ export const saveChecklistTemplateItemFn = createServerFn({ method: "POST" })
         dueReference: z.enum(["start_date", "contract_end_date", "last_working_day", "manual"]),
         dueOffsetDays: z.number().int().min(-365).max(365),
         sortOrder: z.number().int().min(0).max(10000),
+        taskType: z.enum(["Task", "Email"]),
+        preferredEmailTemplateId: z.string().uuid().nullable().optional(),
       })
       .parse(data),
   )
@@ -337,6 +339,10 @@ export const saveChecklistTemplateFn = createServerFn({ method: "POST" })
 export const listPublishedTemplatesFn = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(({ context }) => wb.listPublishedTemplates(context.supabase as wb.Db, context.userId));
+
+export const listEmailEligibleCaseIdsFn = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(({ context }) => wb.listEmailEligibleCaseIds(context.supabase as wb.Db, context.userId));
 
 export const saveTemplateFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -404,7 +410,7 @@ export const completeEmailTaskFn = createServerFn({ method: "POST" })
   .inputValidator((data) =>
     z
       .object({
-        taskId: z.string().uuid(),
+        taskId: z.string().uuid().optional(),
         caseId: z.string().uuid(),
         templateId: z.string().uuid(),
         subject: z.string().min(1).max(300),
@@ -431,11 +437,23 @@ export const recordOutlookOpenedFn = createServerFn({ method: "POST" })
         templateVersion: z.number().int().positive(),
         subject: z.string().min(1).max(300),
         recipient: z.string().email().max(320),
+        outlookMode: z.enum(["desktop_bridge", "mailto"]),
       })
       .parse(data),
   )
   .handler(({ data, context }) =>
     wb.recordEmailOpened(context.supabase as wb.Db, context.userId, data),
+  );
+
+export const bindEmailComposeAttachmentsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) =>
+    z
+      .object({ composeSessionId: z.string().uuid(), communicationId: z.string().uuid() })
+      .parse(data),
+  )
+  .handler(({ data, context }) =>
+    wb.bindEmailComposeAttachments(context.supabase as wb.Db, context.userId, data),
   );
 
 export const assignChecklistOwnerFn = createServerFn({ method: "POST" })

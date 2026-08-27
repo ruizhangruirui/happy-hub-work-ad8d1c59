@@ -16,7 +16,9 @@ export async function detectOutlookIntegration(): Promise<"desktop_bridge" | "ma
     const response = await fetch("http://127.0.0.1:17873/v1/health", {
       signal: AbortSignal.timeout(800),
     });
-    return response.ok ? "desktop_bridge" : "mailto";
+    if (!response.ok) return "mailto";
+    const capability = (await response.json()) as { outlook?: string; attachments?: boolean };
+    return capability.outlook === "classic" && capability.attachments ? "desktop_bridge" : "mailto";
   } catch {
     return "mailto";
   }

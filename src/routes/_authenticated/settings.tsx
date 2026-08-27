@@ -381,6 +381,8 @@ type ChecklistRuleForm = Pick<
   | "dueReference"
   | "dueOffsetDays"
   | "sortOrder"
+  | "taskType"
+  | "preferredEmailTemplateId"
 > & { id?: string };
 
 type ChecklistTemplateForm = Pick<
@@ -403,6 +405,8 @@ const ruleForm = (item: ChecklistTemplateItemDto): ChecklistRuleForm => ({
   dueReference: item.dueReference,
   dueOffsetDays: item.dueOffsetDays,
   sortOrder: item.sortOrder,
+  taskType: item.taskType,
+  preferredEmailTemplateId: item.preferredEmailTemplateId,
 });
 
 function ChecklistRules({ canManage }: { canManage: boolean }) {
@@ -504,6 +508,8 @@ function ChecklistRules({ canManage }: { canManage: boolean }) {
                         dueReference: "manual",
                         dueOffsetDays: 0,
                         sortOrder: (templateItems.at(-1)?.sortOrder ?? 0) + 10,
+                        taskType: "Task",
+                        preferredEmailTemplateId: null,
                       })
                     }
                   >
@@ -546,6 +552,9 @@ function ChecklistRules({ canManage }: { canManage: boolean }) {
       {editing ? (
         <ChecklistRuleModal
           item={editing}
+          emailTemplates={data.emailTemplates.filter((template) =>
+            template.applicableCaseTypes.includes(editing.caseType.toLowerCase()),
+          )}
           busy={busy}
           close={() => setEditing(null)}
           save={async (next) => {
@@ -593,11 +602,13 @@ function ChecklistRules({ canManage }: { canManage: boolean }) {
 
 function ChecklistRuleModal({
   item,
+  emailTemplates,
   busy,
   close,
   save,
 }: {
   item: ChecklistRuleForm;
+  emailTemplates: { id: string; name: string }[];
   busy: boolean;
   close: () => void;
   save: (item: ChecklistRuleForm) => Promise<void>;
@@ -628,6 +639,41 @@ function ChecklistRuleModal({
           />
         </label>
         <div className="two">
+          <label>
+            {t("Task Type")}
+            <select
+              value={form.taskType}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  taskType: event.target.value as "Task" | "Email",
+                  preferredEmailTemplateId:
+                    event.target.value === "Email" ? form.preferredEmailTemplateId : null,
+                })
+              }
+            >
+              <option value="Task">{t("Task")}</option>
+              <option value="Email">{t("Email")}</option>
+            </select>
+          </label>
+          {form.taskType === "Email" ? (
+            <label>
+              {t("Preferred Email Template")}
+              <select
+                value={form.preferredEmailTemplateId ?? ""}
+                onChange={(event) =>
+                  setForm({ ...form, preferredEmailTemplateId: event.target.value || null })
+                }
+              >
+                <option value="">{t("No preferred template")}</option>
+                {emailTemplates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <label>
             {t("Owner Team")}
             <select

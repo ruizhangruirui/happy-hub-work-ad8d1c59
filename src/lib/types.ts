@@ -31,6 +31,8 @@ export interface TaskDto {
   priority: string;
   status: string;
   email: boolean;
+  taskType: "Task" | "Email";
+  preferredEmailTemplateId: string | null;
   ownerId: string | null;
   ownerName: string;
   checklistItemId: string | null;
@@ -78,6 +80,8 @@ export interface ChecklistTemplateItemDto {
   dueReference: "start_date" | "contract_end_date" | "last_working_day" | "manual";
   dueOffsetDays: number;
   sortOrder: number;
+  taskType: "Task" | "Email";
+  preferredEmailTemplateId: string | null;
 }
 
 export interface ChecklistTemplateDto {
@@ -142,6 +146,7 @@ export interface CaseCapabilitiesDto {
   canManageFiles: boolean;
   canShareCase: boolean;
   canViewFullCase: boolean;
+  canComposeEmail: boolean;
 }
 
 export interface MemberDto {
@@ -196,6 +201,23 @@ export interface ExternalRequestDto {
   respondedAt: string | null;
 }
 
+export interface EmailCommunicationDto {
+  communicationId: string;
+  taskId: string | null;
+  templateId: string | null;
+  templateName: string;
+  templateVersion: number | null;
+  recipient: string;
+  renderedSubject: string;
+  state: "Draft Prepared" | "Opened in Outlook" | "Marked Sent";
+  outlookMode: string | null;
+  preparedBy: string;
+  preparedAt: string;
+  openedAt: string | null;
+  markedSentAt: string | null;
+  attachments: { id: string; filename: string; size: number; contentType: string | null }[];
+}
+
 export interface CaseDetailDto {
   case: CaseDto & {
     givenName: string | null;
@@ -220,6 +242,7 @@ export interface CaseDetailDto {
   taskComments: TaskCommentDto[];
   assignableUsers: { id: string; name: string; operationalTeams: string[] }[];
   capabilities: CaseCapabilitiesDto;
+  communications: EmailCommunicationDto[];
 }
 
 export interface TemplateDto {
@@ -250,6 +273,7 @@ export interface EmailVariableDto {
   required: boolean;
   defaultValue: string | null;
   description: string | null;
+  choices?: string[];
 }
 export interface EmailAttachmentDto {
   id: string;
