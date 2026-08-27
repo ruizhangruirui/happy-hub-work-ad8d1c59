@@ -35,6 +35,10 @@ export interface TaskDto {
   completedAt: string | null;
   assigneeRole: string | null;
   defaultTaskKey: string | null;
+  description: string | null;
+  ownerTeam: "HR" | "IT" | "Admin";
+  mandatory: boolean;
+  completedByName: string | null;
 }
 
 export interface CaseDto {
@@ -57,6 +61,12 @@ export interface CaseDto {
   location: string | null;
   supervisorName: string | null;
   supervisorEmail: string | null;
+  contractEndDate: string | null;
+  lastWorkingDay: string | null;
+  joinedDate: string | null;
+  joinedAt: string | null;
+  leftDate: string | null;
+  leftAt: string | null;
 }
 
 export interface ChecklistDto {
@@ -157,11 +167,79 @@ export interface TemplateDto {
   variables: string[];
   applicableCaseTypes: string[];
   version: number;
+  description: string;
+  recipientSource: "personal_email" | "company_email" | "manual";
+  variableDefinitions: EmailVariableDto[];
+  attachments: EmailAttachmentDto[];
 }
 
-export interface PeopleRowDto { personId:string;displayName:string;givenName:string|null;familyName:string|null;preferredName:string|null;email:string|null;employmentId:string|null;employeeId:string|null;employmentType:string|null;role:string|null;team:string;teamId:string|null;location:string|null;status:string;startDate:string|null;endDate:string|null;supervisorName:string|null; }
-export interface PersonCandidateDto {personId:string|null;displayName:string;email:string|null;employeeId:string|null;matchStrength:"strong"|"warning";matchReason:"employee_id"|"email"|"name"|"restricted";lastEmploymentType:string|null;lastTeam:string|null;lastEndDate:string|null;accessible:boolean}
-export interface PersonDetailDto { person:PeopleRowDto & {phone:string|null}; employments:Array<{id:string;employmentType:string;employeeId:string|null;role:string|null;team:string;location:string|null;status:string;startDate:string|null;endDate:string|null;supervisorName:string|null;workload:number|null;contractType:string|null}>; cases:CaseDto[]; }
+export interface EmailVariableDto {
+  key: string;
+  displayName: string;
+  dataType: string;
+  sourceType: string;
+  sourceField: string | null;
+  required: boolean;
+  defaultValue: string | null;
+  description: string | null;
+}
+export interface EmailAttachmentDto {
+  id: string;
+  filename: string;
+  storagePath: string;
+  contentType: string | null;
+  size: number;
+}
+
+export interface PeopleRowDto {
+  personId: string;
+  displayName: string;
+  givenName: string | null;
+  familyName: string | null;
+  preferredName: string | null;
+  email: string | null;
+  employmentId: string | null;
+  employeeId: string | null;
+  employmentType: string | null;
+  role: string | null;
+  team: string;
+  teamId: string | null;
+  location: string | null;
+  status: string;
+  startDate: string | null;
+  endDate: string | null;
+  supervisorName: string | null;
+}
+export interface PersonCandidateDto {
+  personId: string | null;
+  displayName: string;
+  email: string | null;
+  employeeId: string | null;
+  matchStrength: "strong" | "warning";
+  matchReason: "employee_id" | "email" | "name" | "restricted";
+  lastEmploymentType: string | null;
+  lastTeam: string | null;
+  lastEndDate: string | null;
+  accessible: boolean;
+}
+export interface PersonDetailDto {
+  person: PeopleRowDto & { phone: string | null };
+  employments: Array<{
+    id: string;
+    employmentType: string;
+    employeeId: string | null;
+    role: string | null;
+    team: string;
+    location: string | null;
+    status: string;
+    startDate: string | null;
+    endDate: string | null;
+    supervisorName: string | null;
+    workload: number | null;
+    contractType: string | null;
+  }>;
+  cases: CaseDto[];
+}
 
 export interface RosterPersonDto {
   personId: string;
@@ -176,6 +254,8 @@ export interface RosterPersonDto {
   team: string;
   startDate: string;
   supervisorName: string | null;
+  leaving: boolean;
+  lastWorkingDay: string | null;
 }
 
 export interface WorkbenchData {

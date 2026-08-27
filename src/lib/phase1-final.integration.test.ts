@@ -61,12 +61,18 @@ async function bootstrapSupabaseSchemas() {
 
 async function applyMigrations() {
   const directory = resolve(process.cwd(), "supabase/migrations");
-  for (const file of readdirSync(directory).filter((name) => name.endsWith(".sql")).sort()) {
+  for (const file of readdirSync(directory)
+    .filter((name) => name.endsWith(".sql"))
+    .sort()) {
     await db.exec(readFileSync(resolve(directory, file), "utf8"));
   }
 }
 
-async function asUser<T extends Record<string, unknown>>(userId: string, sql: string, params: unknown[] = []) {
+async function asUser<T extends Record<string, unknown>>(
+  userId: string,
+  sql: string,
+  params: unknown[] = [],
+) {
   await db.exec("set role authenticated");
   await db.query("select set_config('request.jwt.claim.sub', $1, false)", [userId]);
   try {
@@ -104,7 +110,14 @@ async function createOnboarding(
       $1,$2,$3,null,$4,$5,'Employee',$6,'Engineer','Zurich','Supervisor',null,
       '2026-08-01',100,'Medium',null,false
     ) result`,
-    [existingPersonId, `Given${suffix}`, `Family${suffix}`, `${suffix}@example.test`, employeeId, teamId],
+    [
+      existingPersonId,
+      `Given${suffix}`,
+      `Family${suffix}`,
+      `${suffix}@example.test`,
+      employeeId,
+      teamId,
+    ],
   );
 }
 
@@ -139,13 +152,25 @@ describe("Phase 1 final closure — real PostgreSQL integration", () => {
 
     await asUser(MANAGER_A, "select public.transition_lifecycle_case($1,true)", [ids.caseId]);
 
-    const ownRead = await asUser<{ id: string }>(MANAGER_A, "select id from public.persons where id=$1", [ids.personId]);
+    const ownRead = await asUser<{ id: string }>(
+      MANAGER_A,
+      "select id from public.persons where id=$1",
+      [ids.personId],
+    );
     expect(ownRead.rows).toHaveLength(1);
 
     await expect(createOnboarding(MANAGER_A, TEAM_B, "AUTH-B")).rejects.toThrow();
-    const otherRead = await asUser<{ id: string }>(MANAGER_B, "select id from public.persons where id=$1", [ids.personId]);
+    const otherRead = await asUser<{ id: string }>(
+      MANAGER_B,
+      "select id from public.persons where id=$1",
+      [ids.personId],
+    );
     expect(otherRead.rows).toHaveLength(0);
-    const otherUpdate = await asUser(MANAGER_B, "update public.persons set phone='forbidden' where id=$1", [ids.personId]);
+    const otherUpdate = await asUser(
+      MANAGER_B,
+      "update public.persons set phone='forbidden' where id=$1",
+      [ids.personId],
+    );
     expect(otherUpdate.affectedRows).toBe(0);
 
     const offboarding = await asUser<{ result: { personId: string; employmentId: string } }>(
@@ -153,10 +178,17 @@ describe("Phase 1 final closure — real PostgreSQL integration", () => {
       "select public.create_offboarding_case_v2($1,$2,'2026-08-20','Resignation',null,'Medium',null) result",
       [ids.personId, ids.employmentId],
     );
-    expect(offboarding.rows[0]!.result).toMatchObject({ personId: ids.personId, employmentId: ids.employmentId });
+    expect(offboarding.rows[0]!.result).toMatchObject({
+      personId: ids.personId,
+      employmentId: ids.employmentId,
+    });
 
     await expect(
-      asUser(MANAGER_B, "select public.create_offboarding_case_v2($1,$2,'2026-08-20',null,null,'Medium',null)", [ids.personId, ids.employmentId]),
+      asUser(
+        MANAGER_B,
+        "select public.create_offboarding_case_v2($1,$2,'2026-08-20',null,null,'Medium',null)",
+        [ids.personId, ids.employmentId],
+      ),
     ).rejects.toThrow();
   });
 
@@ -172,14 +204,21 @@ describe("Phase 1 final closure — real PostgreSQL integration", () => {
         ["dddddddd-dddd-dddd-dddd-dddddddddddd", seededEmployment.rows[0]!.id],
       ),
     ).rejects.toThrow();
-    const personUpdate = await asUser(VIEWER, "update public.persons set phone='x' where id='dddddddd-dddd-dddd-dddd-dddddddddddd'");
+    const personUpdate = await asUser(
+      VIEWER,
+      "update public.persons set phone='x' where id='dddddddd-dddd-dddd-dddd-dddddddddddd'",
+    );
     const employmentUpdate = await asUser(VIEWER, "update public.employments set role_title='x'");
     expect(personUpdate.affectedRows).toBe(0);
     expect(employmentUpdate.affectedRows).toBe(0);
 
     const adminCreated = await createOnboarding(ADMIN, TEAM_B, "ADMIN");
     expect(adminCreated.rows[0]!.result.personId).toBeTruthy();
-    const adminRead = await asUser<{ id: string }>(ADMIN, "select id from public.persons where id=$1", [adminCreated.rows[0]!.result.personId]);
+    const adminRead = await asUser<{ id: string }>(
+      ADMIN,
+      "select id from public.persons where id=$1",
+      [adminCreated.rows[0]!.result.personId],
+    );
     expect(adminRead.rows).toHaveLength(1);
   });
 
@@ -205,8 +244,16 @@ describe("Phase 1 final closure — real PostgreSQL integration", () => {
       [personId, historicalEmployment.id, ADMIN],
     );
 
-    const formerTeam = await asUser<{ id: string }>(MANAGER_A, "select id from public.persons where id=$1", [personId]);
-    const currentTeam = await asUser<{ id: string }>(MANAGER_B, "select id from public.persons where id=$1", [personId]);
+    const formerTeam = await asUser<{ id: string }>(
+      MANAGER_A,
+      "select id from public.persons where id=$1",
+      [personId],
+    );
+    const currentTeam = await asUser<{ id: string }>(
+      MANAGER_B,
+      "select id from public.persons where id=$1",
+      [personId],
+    );
     expect(formerTeam.rows).toHaveLength(0);
     expect(currentTeam.rows).toHaveLength(1);
   });
@@ -275,7 +322,11 @@ describe("Phase 1 final closure — real PostgreSQL integration", () => {
       [TEAM_A],
     );
     expect(match.rows).toEqual([
-      expect.objectContaining({ person_id: null, display_name: "Existing employee record", accessible: false }),
+      expect.objectContaining({
+        person_id: null,
+        display_name: "Existing employee record",
+        accessible: false,
+      }),
     ]);
     expect(JSON.stringify(match.rows)).not.toContain("Secret Person");
     expect(JSON.stringify(match.rows)).not.toContain(TEAM_B);
@@ -296,7 +347,11 @@ describe("Phase 1 final closure — real PostgreSQL integration", () => {
       "select * from public.find_onboarding_person_candidates(null,null,'Peter Wang',$1)",
       [TEAM_A],
     );
-    expect(weak.rows[0]).toMatchObject({ match_strength: "warning", match_reason: "name", accessible: true });
+    expect(weak.rows[0]).toMatchObject({
+      match_strength: "warning",
+      match_reason: "name",
+      accessible: true,
+    });
   });
 
   it("derives effective status from a fixed business date", async () => {
@@ -327,11 +382,17 @@ describe("Phase 1 final closure — real PostgreSQL integration", () => {
   });
 
   it("restores NULL and contractual end dates through repeated offboarding reopen cycles", async () => {
-    for (const [suffix, originalEnd] of [["NULL", null], ["FIXED", "2026-08-31"]] as const) {
+    for (const [suffix, originalEnd] of [
+      ["NULL", null],
+      ["FIXED", "2026-08-31"],
+    ] as const) {
       const created = await createOnboarding(ADMIN, TEAM_A, `REOPEN-${suffix}`);
       const ids = created.rows[0]!.result;
       await db.query("update public.cases set status='Confirmed' where id=$1", [ids.caseId]);
-      await db.query("update public.employments set status='active',end_date=$2 where id=$1", [ids.employmentId, originalEnd]);
+      await db.query("update public.employments set status='active',end_date=$2 where id=$1", [
+        ids.employmentId,
+        originalEnd,
+      ]);
       const beforeOffboarding = await db.query<{ status: string }>(
         "select public.get_effective_employment_status($1,public.business_date()) status",
         [ids.employmentId],
@@ -379,5 +440,69 @@ describe("Phase 1 final closure — real PostgreSQL integration", () => {
       [ids.caseId],
     );
     expect(state.rows[0]).toEqual({ case_status: "Preparing", employment_status: "planned" });
+  });
+
+  it("implements joined/left lifecycle immediately while retaining both historical cases", async () => {
+    const created = await createOnboarding(ADMIN, TEAM_A, "V1-LIFECYCLE");
+    const ids = created.rows[0]!.result;
+    let roster = await asUser<{ person_id: string }>(
+      ADMIN,
+      "select person_id from public.active_employee_roster where person_id=$1",
+      [ids.personId],
+    );
+    expect(roster.rows).toHaveLength(0);
+    await asUser(ADMIN, "select public.transition_lifecycle_case($1,true)", [ids.caseId]);
+    roster = await asUser(
+      ADMIN,
+      "select person_id from public.active_employee_roster where person_id=$1",
+      [ids.personId],
+    );
+    expect(roster.rows).toHaveLength(1);
+    const off = await asUser<{ result: { caseId: string } }>(
+      ADMIN,
+      "select public.create_offboarding_case_v3($1,$2,'2026-12-31','2026-12-15','Voluntary Resignation',null,'Medium',null) result",
+      [ids.personId, ids.employmentId],
+    );
+    roster = await asUser(
+      ADMIN,
+      "select person_id from public.active_employee_roster where person_id=$1",
+      [ids.personId],
+    );
+    expect(roster.rows[0]).toMatchObject({ person_id: ids.personId });
+    await asUser(ADMIN, "select public.transition_lifecycle_case($1,true)", [
+      off.rows[0]!.result.caseId,
+    ]);
+    roster = await asUser(
+      ADMIN,
+      "select person_id from public.active_employee_roster where person_id=$1",
+      [ids.personId],
+    );
+    expect(roster.rows).toHaveLength(0);
+    const cases = await asUser<{ case_type: string }>(
+      ADMIN,
+      "select case_type from public.cases where person_id=$1",
+      [ids.personId],
+    );
+    expect(cases.rows.map((x) => x.case_type).sort()).toEqual(["Offboarding", "Onboarding"]);
+  });
+
+  it("generates employment/leaving-specific team-owned tasks", async () => {
+    const created = await createOnboarding(ADMIN, TEAM_A, "V1-RULES");
+    const ids = created.rows[0]!.result;
+    await asUser(ADMIN, "select public.transition_lifecycle_case($1,true)", [ids.caseId]);
+    const off = await asUser<{ result: { caseId: string } }>(
+      ADMIN,
+      "select public.create_offboarding_case_v3($1,$2,null,null,'Voluntary Resignation',null,'Medium',null) result",
+      [ids.personId, ids.employmentId],
+    );
+    const tasks = await asUser<{ title: string; owner_team: string }>(
+      ADMIN,
+      "select title,owner_team from public.tasks where case_id=$1",
+      [off.rows[0]!.result.caseId],
+    );
+    expect(tasks.rows.some((x) => x.title === "Leaving Agreement")).toBe(true);
+    expect(tasks.rows.some((x) => x.title === "Termination Letter")).toBe(false);
+    expect(tasks.rows.some((x) => x.title === "Garden Leave Letter")).toBe(false);
+    expect(new Set(tasks.rows.map((x) => x.owner_team))).toEqual(new Set(["HR", "IT", "Admin"]));
   });
 });

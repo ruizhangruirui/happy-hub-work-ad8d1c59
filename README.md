@@ -26,28 +26,32 @@ Onboarding and offboarding often involve HR, administration, IT, reception, lab 
 
 ## Active Roster Rules
 
-- A confirmed onboarding enters the active roster on the employee's start date.
+- Confirm Joined immediately enters the person into Active People.
 - A pending offboarding does not remove the employee.
-- A confirmed offboarding keeps the employee in the roster through the last working day and removes them after that date.
+- Confirm Left immediately removes the employee from Active People while retaining the Person, Employment, Case and follow-up tasks.
+- Contract End Date and Last Working Day are separate fields.
 - Employee ID is canonical on the Person and is enforced consistently across Employment history by PostgreSQL.
+
+The complete V1 domain, checklist, collaboration, communication and reporting design is documented in [V1 Architecture](docs/V1-ARCHITECTURE.md).
 
 ## Technology Stack
 
-| Area | Technology |
-| --- | --- |
-| Language | TypeScript 5.8 |
-| UI | React 19, Tailwind CSS 4, Radix UI, shadcn/ui conventions |
-| Full-stack framework | TanStack Start |
-| Routing | TanStack Router |
-| Server state | TanStack Query |
-| Forms and validation | React Hook Form, Zod |
-| Build tooling | Vite 8, Nitro |
-| Database | PostgreSQL via Supabase |
-| Authentication | Supabase Auth |
-| Authorization | PostgreSQL Row Level Security, role and organization scopes |
-| Storage | Supabase Storage |
-| Hosting | Lovable Cloud, connected to this GitHub repository |
-| Additional UI libraries | Lucide React, Recharts, Sonner, date-fns |
+| Area                    | Technology                                                  |
+| ----------------------- | ----------------------------------------------------------- |
+| Language                | TypeScript 5.8                                              |
+| UI                      | React 19, Tailwind CSS 4, Radix UI, shadcn/ui conventions   |
+| Full-stack framework    | TanStack Start                                              |
+| Routing                 | TanStack Router                                             |
+| Server state            | TanStack Query                                              |
+| Forms and validation    | React Hook Form, Zod                                        |
+| Build tooling           | Vite 8, Nitro                                               |
+| Database                | PostgreSQL via Supabase                                     |
+| Authentication          | Supabase Auth                                               |
+| Authorization           | PostgreSQL Row Level Security, role and organization scopes |
+| Storage                 | Supabase Storage                                            |
+| Hosting                 | Lovable Cloud, connected to this GitHub repository          |
+| Additional UI libraries | Lucide React, Recharts, Sonner, date-fns                    |
+| Export                  | SheetJS (`xlsx`) for CSV/XLSX workforce exports             |
 
 ## Architecture
 
