@@ -71,7 +71,7 @@ Object.assign(zh, {
   "Tasks":"任务","Case Tasks":"事项任务","tasks completed":"项任务已完成","Tasks are generated automatically from the onboarding case.":"任务由入职事项自动生成。",
   "No tasks yet.":"暂无任务。","Prepare IT equipment":"准备 IT 设备","Send Welcome Email":"发送 Welcome Email","Schedule onboarding meeting":"安排入职会议",
   "Assigned role":"负责角色","it_support":"IT 支持","hr":"HR","manager":"主管","Go send email":"去发送邮件","Linked task":"关联任务",
-  "Mark as Sent":"标记为已发送","Email Sent":"邮件已发送","Email marked as sent and task completed":"邮件已标记发送，关联任务已完成"
+  "Mark as Sent":"标记为已发送","Email Sent":"邮件已发送","Email marked as sent":"邮件已标记发送","Email marked as sent and task completed":"邮件已标记发送，关联任务已完成","Linked to draft":"已关联到草稿"
 });
 
 Object.assign(zh, {

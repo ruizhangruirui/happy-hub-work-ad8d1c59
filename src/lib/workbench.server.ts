@@ -1777,6 +1777,36 @@ export async function bindEmailComposeAttachments(
   return { ok: true as const, bound: Number(data ?? 0) };
 }
 
+export async function requestTemporaryEmailAttachmentDeletion(
+  supabase: Db,
+  _userId: string,
+  attachmentId: string,
+) {
+  const { data, error } = await supabase.rpc("request_temporary_email_attachment_deletion", {
+    _attachment_id: attachmentId,
+  });
+  if (error) {
+    if (error.code === "42501") return { error: "forbidden" as const };
+    throw new Error(error.message);
+  }
+  return { ok: true as const, storagePath: data as string };
+}
+
+export async function finalizeTemporaryEmailAttachmentDeletion(
+  supabase: Db,
+  _userId: string,
+  attachmentId: string,
+) {
+  const { data, error } = await supabase.rpc("finalize_temporary_email_attachment_deletion", {
+    _attachment_id: attachmentId,
+  });
+  if (error) {
+    if (error.code === "42501") return { error: "forbidden" as const };
+    throw new Error(error.message);
+  }
+  return data ? ({ ok: true as const } as const) : ({ error: "forbidden" as const } as const);
+}
+
 export async function completeEmailTask(
   supabase: Db,
   userId: string,

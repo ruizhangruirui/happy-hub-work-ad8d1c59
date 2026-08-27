@@ -7,10 +7,12 @@ import { toast } from "sonner";
 import {
   completeEmailTaskFn,
   bindEmailComposeAttachmentsFn,
+  finalizeTemporaryEmailAttachmentDeletionFn,
   getCaseDetailFn,
   listPublishedTemplatesFn,
   listEmailEligibleCaseIdsFn,
   recordOutlookOpenedFn,
+  requestTemporaryEmailAttachmentDeletionFn,
   saveEmailDraftFn,
 } from "@/lib/workbench.functions";
 import { useWorkbench } from "@/components/workbench/CaseList";
@@ -25,6 +27,7 @@ import {
   resolveRecipient,
 } from "@/lib/email-compose";
 import { supabase } from "@/integrations/supabase/client";
+import { temporaryComposeAttachments } from "@/lib/additional-attachments";
 
 export const Route = createFileRoute("/_authenticated/email")({
   validateSearch: (s: Record<string, unknown>) => ({
@@ -36,7 +39,7 @@ export const Route = createFileRoute("/_authenticated/email")({
   component: EmailPage,
 });
 
-type AdditionalAttachment = EmailAttachmentDto & { downloadUrl: string };
+type AdditionalAttachment = EmailAttachmentDto & { downloadUrl: string; linked: boolean };
 
 export function EmailPage() {
   const { t, lang } = useLang();
@@ -53,6 +56,8 @@ export function EmailPage() {
   const recordOpened = useServerFn(recordOutlookOpenedFn);
   const completeTask = useServerFn(completeEmailTaskFn);
   const bindAttachments = useServerFn(bindEmailComposeAttachmentsFn);
+  const requestAttachmentDeletion = useServerFn(requestTemporaryEmailAttachmentDeletionFn);
+  const finalizeAttachmentDeletion = useServerFn(finalizeTemporaryEmailAttachmentDeletionFn);
   const { data: wbData, isLoading: wbLoading } = useWorkbench();
   const { data: templateData, isLoading: templateLoading } = useQuery({
     queryKey: ["email-templates"],
@@ -104,13 +109,15 @@ export function EmailPage() {
     additionalRef.current = additional;
   }, [additional]);
   useEffect(() => {
-    for (const item of additionalRef.current) {
-      void supabase.storage.from("email-attachments").remove([item.storagePath]);
-      void (supabase as any)
-        .from("email_additional_attachments")
-        .delete()
-        .eq("id", item.id)
-        .is("communication_id", null);
+    for (const item of temporaryComposeAttachments(additionalRef.current)) {
+      void (async () => {
+        const requested = await requestAttachmentDeletion({ data: { attachmentId: item.id } });
+        if ("error" in requested) return;
+        const { error } = await supabase.storage
+          .from("email-attachments")
+          .remove([requested.storagePath]);
+        if (!error) await finalizeAttachmentDeletion({ data: { attachmentId: item.id } });
+      })();
     }
     setCommunicationId("");
     setOpened(false);
@@ -216,11 +223,17 @@ export function EmailPage() {
       },
     });
     if ("error" in result) throw new Error(result.error);
-    setCommunicationId(result.communicationId);
+    const pendingAttachmentCount = temporaryComposeAttachments(additionalRef.current).length;
     const bound = await bindAttachments({
       data: { composeSessionId, communicationId: result.communicationId },
     });
     if ("error" in bound) throw new Error(bound.error);
+    if (bound.bound !== pendingAttachmentCount)
+      throw new Error(t("Unable to link every Additional Attachment to the draft."));
+    const linkedAttachments = additionalRef.current.map((item) => ({ ...item, linked: true }));
+    additionalRef.current = linkedAttachments;
+    setAdditional(linkedAttachments);
+    setCommunicationId(result.communicationId);
     return result.communicationId;
   };
 
@@ -280,6 +293,7 @@ export function EmailPage() {
         contentType: file.type,
         size: file.size,
         downloadUrl: signed.signedUrl,
+        linked: false,
       },
     ]);
   };
@@ -364,7 +378,9 @@ export function EmailPage() {
         qc.invalidateQueries({ queryKey: ["case", caseId] }),
         qc.invalidateQueries({ queryKey: ["workbench"] }),
       ]);
-      toast.success(t("Email marked as sent and task completed"));
+      toast.success(
+        t(task?.id ? "Email marked as sent and task completed" : "Email marked as sent"),
+      );
     }
   };
 
@@ -494,34 +510,58 @@ export function EmailPage() {
             {additional.map((item) => (
               <span className="variable" key={item.id}>
                 {item.filename}{" "}
-                <button
-                  onClick={() => {
-                    void supabase.storage.from("email-attachments").remove([item.storagePath]);
-                    void (supabase as any)
-                      .from("email_additional_attachments")
-                      .delete()
-                      .eq("id", item.id);
-                    setAdditional((list) => list.filter((file) => file.id !== item.id));
-                  }}
-                >
-                  ×
-                </button>
+                {item.linked ? (
+                  <small>{t("Linked to draft")}</small>
+                ) : (
+                  <button
+                    onClick={() => {
+                      void (async () => {
+                        const requested = await requestAttachmentDeletion({
+                          data: { attachmentId: item.id },
+                        });
+                        if ("error" in requested) {
+                          toast.error(opErrorMessage(t, requested.error));
+                          return;
+                        }
+                        const { error } = await supabase.storage
+                          .from("email-attachments")
+                          .remove([requested.storagePath]);
+                        if (error) {
+                          toast.error(error.message);
+                          return;
+                        }
+                        const finalized = await finalizeAttachmentDeletion({
+                          data: { attachmentId: item.id },
+                        });
+                        if ("error" in finalized) {
+                          toast.error(opErrorMessage(t, finalized.error));
+                          return;
+                        }
+                        setAdditional((list) => list.filter((file) => file.id !== item.id));
+                      })();
+                    }}
+                  >
+                    ×
+                  </button>
+                )}
               </span>
             ))}
           </p>
-          <label className="secondary">
-            <Icon name="plus" /> {t("Add Attachment")}
-            <input
-              hidden
-              type="file"
-              accept=".pdf,.docx,.xlsx,.png,.jpg,.jpeg"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) void uploadAdditional(file);
-                e.target.value = "";
-              }}
-            />
-          </label>
+          {!communicationId ? (
+            <label className="secondary">
+              <Icon name="plus" /> {t("Add Attachment")}
+              <input
+                hidden
+                type="file"
+                accept=".pdf,.docx,.xlsx,.png,.jpg,.jpeg"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void uploadAdditional(file);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          ) : null}
         </section>
         <section className="panel preview">
           <div className="columnhead">

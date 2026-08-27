@@ -456,6 +456,28 @@ export const bindEmailComposeAttachmentsFn = createServerFn({ method: "POST" })
     wb.bindEmailComposeAttachments(context.supabase as wb.Db, context.userId, data),
   );
 
+export const requestTemporaryEmailAttachmentDeletionFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) => z.object({ attachmentId: z.string().uuid() }).parse(data))
+  .handler(({ data, context }) =>
+    wb.requestTemporaryEmailAttachmentDeletion(
+      context.supabase as wb.Db,
+      context.userId,
+      data.attachmentId,
+    ),
+  );
+
+export const finalizeTemporaryEmailAttachmentDeletionFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) => z.object({ attachmentId: z.string().uuid() }).parse(data))
+  .handler(({ data, context }) =>
+    wb.finalizeTemporaryEmailAttachmentDeletion(
+      context.supabase as wb.Db,
+      context.userId,
+      data.attachmentId,
+    ),
+  );
+
 export const assignChecklistOwnerFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data) =>

@@ -1030,6 +1030,105 @@ describe("Phase 3 Email Center — PostgreSQL security and history", () => {
       { filename: "A.pdf", linked: true },
       { filename: "B.pdf", linked: false },
     ]);
+    await db.query(
+      "insert into storage.objects(bucket_id,name,owner,metadata) values('email-attachments','additional/a.pdf',$1,'{}')",
+      [ADMIN],
+    );
+    const boundStorageDelete = await asUser(
+      ADMIN,
+      "delete from storage.objects where bucket_id='email-attachments' and name='additional/a.pdf' returning name",
+    );
+    expect(boundStorageDelete.rowCount).toBe(0);
+    await expect(
+      asUser(
+        ADMIN,
+        "select public.request_temporary_email_attachment_deletion(id) from public.email_additional_attachments where filename='A.pdf' and case_id=$1",
+        [caseId],
+      ),
+    ).rejects.toThrow();
+    await expect(
+      asUser(
+        ADMIN,
+        "delete from public.email_additional_attachments where filename='A.pdf' and case_id=$1",
+        [caseId],
+      ),
+    ).rejects.toThrow();
+    const history = await asUser<{ filename: string }>(
+      ADMIN,
+      `select a.filename from public.email_communications c
+       join public.email_additional_attachments a on a.communication_id=c.id
+       where c.id=$1`,
+      [communication.rows[0]!.id],
+    );
+    expect(history.rows).toEqual([{ filename: "A.pdf" }]);
+  });
+
+  it("allows the owner to remove only an unbound Additional Attachment", async () => {
+    const created = await createOnboarding(ADMIN, TEAM_A, "P3-TEMP-DELETE");
+    const attachmentId = "aaaaaaaa-1000-4000-8000-000000000001";
+    await asUser(
+      ADMIN,
+      `insert into public.email_additional_attachments(id,case_id,compose_session_id,filename,storage_path,content_type,size,uploaded_by)
+       values($1,$2,gen_random_uuid(),'Temporary.pdf','additional/temporary.pdf','application/pdf',10,$3)`,
+      [attachmentId, created.rows[0]!.result.caseId, ADMIN],
+    );
+    const requested = await asUser<{ path: string }>(
+      ADMIN,
+      "select public.request_temporary_email_attachment_deletion($1) path",
+      [attachmentId],
+    );
+    expect(requested.rows[0]!.path).toBe("additional/temporary.pdf");
+    await db.query(
+      "insert into storage.objects(bucket_id,name,owner,metadata) values('email-attachments','additional/temporary.pdf',$1,'{}')",
+      [ADMIN],
+    );
+    const removedObject = await asUser<{ name: string }>(
+      ADMIN,
+      "delete from storage.objects where bucket_id='email-attachments' and name='additional/temporary.pdf' returning name",
+    );
+    expect(removedObject.rows).toEqual([{ name: "additional/temporary.pdf" }]);
+    const finalized = await asUser<{ removed: boolean }>(
+      ADMIN,
+      "select public.finalize_temporary_email_attachment_deletion($1) removed",
+      [attachmentId],
+    );
+    expect(finalized.rows[0]!.removed).toBe(true);
+    expect(
+      (
+        await db.query("select id from public.email_additional_attachments where id=$1", [
+          attachmentId,
+        ])
+      ).rowCount,
+    ).toBe(0);
+  });
+
+  it("abandoned cleanup removes only unbound metadata and retains linked history", async () => {
+    const created = await createOnboarding(ADMIN, TEAM_A, "P3-ORPHAN");
+    const caseId = created.rows[0]!.result.caseId;
+    const template = await db.query<{ id: string; version: number }>(
+      "select id,version from public.email_templates where status='Published' limit 1",
+    );
+    const communication = await asUser<{ id: string }>(
+      ADMIN,
+      "select public.record_email_event($1,null,$2,$3,'peter@example.com','Retention','Draft Prepared',null) id",
+      [caseId, template.rows[0]!.id, template.rows[0]!.version],
+    );
+    await db.query(
+      `insert into public.email_additional_attachments(case_id,compose_session_id,communication_id,filename,storage_path,content_type,size,uploaded_by,expires_at)
+       values($1,gen_random_uuid(),null,'Orphan.pdf','additional/orphan.pdf','application/pdf',10,$3,now()-interval '1 hour'),
+             ($1,gen_random_uuid(),$2,'Evidence.pdf','additional/evidence.pdf','application/pdf',10,$3,null)`,
+      [caseId, communication.rows[0]!.id, ADMIN],
+    );
+    const cleanup = await db.query<{ paths: string[] }>(
+      "select public.cleanup_abandoned_email_attachments() paths",
+    );
+    expect(cleanup.rows[0]!.paths).toContain("additional/orphan.pdf");
+    expect(cleanup.rows[0]!.paths).not.toContain("additional/evidence.pdf");
+    const retained = await db.query<{ filename: string }>(
+      "select filename from public.email_additional_attachments where communication_id=$1",
+      [communication.rows[0]!.id],
+    );
+    expect(retained.rows).toContainEqual({ filename: "Evidence.pdf" });
   });
 
   it("does not complete an email Task until HR explicitly marks it sent", async () => {
