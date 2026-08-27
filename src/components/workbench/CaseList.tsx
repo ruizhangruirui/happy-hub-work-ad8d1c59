@@ -298,7 +298,7 @@ function CreateCaseModal({
               data: {
                 personId: selected?.personId ?? "",
                 employmentId: form.employmentId,
-                contractEndDate: form.endDate || undefined,
+                contractEndDate: form.endDate,
                 lastWorkingDay: form.startDate || undefined,
                 leavingType: form.leavingType,
                 leavingReason: form.leavingReason || undefined,
@@ -368,8 +368,8 @@ function CreateCaseModal({
             </label>
             <div className="two">
               <label>
-                {t("Contract End Date")} ({t("Optional")})
-                <input type="date" value={form.endDate} onChange={set("endDate")} />
+                {t("Contract End Date")}
+                <input type="date" value={form.endDate} onChange={set("endDate")} required />
               </label>
               <label>
                 {t("Last working day")} ({t("Optional")})

@@ -127,7 +127,7 @@ export const createOffboardingCaseFn = createServerFn({ method: "POST" })
       .object({
         personId: z.string().uuid(),
         employmentId: z.string().uuid(),
-        contractEndDate: z.string().length(10).optional(),
+        contractEndDate: z.string().length(10),
         lastWorkingDay: z.string().length(10).optional(),
         leavingType: z.string().max(80).optional(),
         leavingReason: z.string().max(500).optional(),
@@ -186,6 +186,21 @@ export const setCaseConfirmationFn = createServerFn({ method: "POST" })
   )
   .handler(({ data, context }) =>
     wb.setCaseConfirmation(context.supabase as wb.Db, context.userId, data.caseId, data.confirmed),
+  );
+
+export const updateOffboardingDatesFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) =>
+    z
+      .object({
+        caseId: z.string().uuid(),
+        contractEndDate: z.string().length(10),
+        lastWorkingDay: z.string().length(10).optional(),
+      })
+      .parse(data),
+  )
+  .handler(({ data, context }) =>
+    wb.updateOffboardingDates(context.supabase as wb.Db, context.userId, data),
   );
 
 export const getActiveRosterFn = createServerFn({ method: "GET" })

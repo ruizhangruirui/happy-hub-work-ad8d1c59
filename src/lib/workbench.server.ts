@@ -716,7 +716,7 @@ export async function createOffboardingCase(
   input: {
     personId: string;
     employmentId: string;
-    contractEndDate?: string | undefined;
+    contractEndDate: string;
     lastWorkingDay?: string | undefined;
     leavingType?: string | undefined;
     leavingReason?: string | undefined;
@@ -741,6 +741,24 @@ export async function createOffboardingCase(
   if ((data as any)?.error === "offboarding_exists")
     return { error: "offboarding_exists" as const, caseId: (data as any).caseId as string };
   return { ok: true as const, caseId: (data as any).caseId as string };
+}
+
+export async function updateOffboardingDates(
+  supabase: Db,
+  userId: string,
+  input: { caseId: string; contractEndDate: string; lastWorkingDay?: string | undefined },
+) {
+  if (!(await loadIdentity(supabase, userId))) return { error: "forbidden" as const };
+  const { error } = await supabase.rpc("update_offboarding_dates", {
+    _case_id: input.caseId,
+    _contract_end_date: input.contractEndDate,
+    _last_working_day: input.lastWorkingDay || null,
+  });
+  if (error) {
+    if (error.code === "42501") return { error: "forbidden" as const };
+    throw new Error(error.message);
+  }
+  return { ok: true as const };
 }
 
 function peopleRow(row: any): PeopleRowDto {
