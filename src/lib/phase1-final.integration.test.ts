@@ -102,7 +102,7 @@ async function createOnboarding(
   teamId: string,
   suffix: string,
   existingPersonId: string | null = null,
-  employeeId = `EMP-${suffix}`,
+  employeeId: string | null = `EMP-${suffix}`,
 ) {
   return asUser<{ result: { caseId: string; personId: string; employmentId: string } }>(
     userId,
@@ -381,7 +381,7 @@ describe("Phase 1 final closure — real PostgreSQL integration", () => {
     }
   });
 
-  it("restores NULL and contractual end dates through repeated offboarding reopen cycles", async () => {
+  it("keeps Former lifecycle ended when offboarding workflow is reopened", async () => {
     for (const [suffix, originalEnd] of [
       ["NULL", null],
       ["FIXED", "2026-08-31"],
@@ -411,25 +411,23 @@ describe("Phase 1 final closure — real PostgreSQL integration", () => {
       );
       const offboardingId = offboarding.rows[0]!.result.caseId;
 
-      for (let cycle = 0; cycle < 2; cycle += 1) {
-        await asUser(ADMIN, "select public.transition_lifecycle_case($1,true)", [offboardingId]);
-        let employment = await db.query<{ end_date: string | null }>(
-          "select end_date::text from public.employments where id=$1",
-          [ids.employmentId],
-        );
-        expect(employment.rows[0]!.end_date).toBe("2026-08-15");
-
-        await asUser(ADMIN, "select public.transition_lifecycle_case($1,false)", [offboardingId]);
-        employment = await db.query<{ end_date: string | null }>(
-          "select end_date::text from public.employments where id=$1",
-          [ids.employmentId],
-        );
-        expect(employment.rows[0]!.end_date).toBe(originalEnd);
-      }
+      await asUser(ADMIN, "select public.transition_lifecycle_case($1,true)", [offboardingId]);
+      await asUser(ADMIN, "select public.transition_lifecycle_case($1,false)", [offboardingId]);
+      const state = await db.query<{
+        employment_status: string;
+        case_status: string;
+        left_at: string | null;
+      }>(
+        `select e.status employment_status,c.status case_status,c.left_at::text left_at from public.employments e join public.cases c on c.employment_id=e.id where c.id=$1`,
+        [offboardingId],
+      );
+      expect(state.rows[0]!.employment_status).toBe("ended");
+      expect(state.rows[0]!.case_status).toBe("Follow-up");
+      expect(state.rows[0]!.left_at).not.toBeNull();
     }
   });
 
-  it("reopens onboarding back to planned state", async () => {
+  it("reopens onboarding workflow without reversing Active lifecycle", async () => {
     const created = await createOnboarding(ADMIN, TEAM_A, "ONBOARD-REOPEN");
     const ids = created.rows[0]!.result;
     await asUser(ADMIN, "select public.transition_lifecycle_case($1,true)", [ids.caseId]);
@@ -439,7 +437,25 @@ describe("Phase 1 final closure — real PostgreSQL integration", () => {
        from public.cases c join public.employments e on e.id=c.employment_id where c.id=$1`,
       [ids.caseId],
     );
-    expect(state.rows[0]).toEqual({ case_status: "Preparing", employment_status: "planned" });
+    expect(state.rows[0]).toEqual({ case_status: "Follow-up", employment_status: "active" });
+  });
+
+  it("enriches an onboarding Person with Employee ID without creating a duplicate", async () => {
+    const created = await createOnboarding(ADMIN, TEAM_A, "NO-ID", null, null);
+    const ids = created.rows[0]!.result;
+    await asUser(ADMIN, "select public.update_person_identity($1,' EMP-900 ',null,null)", [
+      ids.personId,
+    ]);
+    const rows = await db.query<{ id: string; employee_id: string }>(
+      "select id,employee_id from public.persons where id=$1",
+      [ids.personId],
+    );
+    expect(rows.rows).toEqual([{ id: ids.personId, employee_id: "EMP-900" }]);
+    const count = await db.query<{ count: number }>(
+      "select count(*)::int count from public.persons where id=$1",
+      [ids.personId],
+    );
+    expect(count.rows[0]!.count).toBe(1);
   });
 
   it("implements joined/left lifecycle immediately while retaining both historical cases", async () => {

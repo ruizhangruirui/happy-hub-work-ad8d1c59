@@ -1618,3 +1618,4 @@ button { cursor: pointer; }
   .userform.two { grid-template-columns: 1fr; }
   .fields { grid-template-columns: 1fr; }
 }
+.casetable .row.lifecycle-success{background:color-mix(in srgb,#e8f7ef 55%,white)}

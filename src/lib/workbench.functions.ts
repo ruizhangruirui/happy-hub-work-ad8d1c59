@@ -148,6 +148,21 @@ export const getPersonDetailFn = createServerFn({ method: "GET" })
   .handler(({ data, context }) =>
     wb.getPersonDetail(context.supabase as wb.Db, context.userId, data.personId),
   );
+export const updatePersonIdentityFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) =>
+    z
+      .object({
+        personId: z.string().uuid(),
+        employeeId: z.string().max(80).optional(),
+        email: z.union([z.string().email(), z.literal("")]).optional(),
+        phone: z.string().max(80).optional(),
+      })
+      .parse(data),
+  )
+  .handler(({ data, context }) =>
+    wb.updatePersonIdentity(context.supabase as wb.Db, context.userId, data),
+  );
 export const findOnboardingCandidatesFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>

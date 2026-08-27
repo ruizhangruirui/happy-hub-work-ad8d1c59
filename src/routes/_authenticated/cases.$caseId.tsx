@@ -83,7 +83,9 @@ function CaseDetailPage() {
         : t(
             "The person will immediately leave Active People. Person history, this case and post-leaving tasks will remain.",
           )
-      : t("This reopens the lifecycle confirmation for correction. History remains available.");
+      : t(
+          "This reopens only the Case workflow. The Person lifecycle and confirmation history will not change.",
+        );
     if (!window.confirm(message)) return;
     try {
       const res = await setConfirmation({ data: { caseId, confirmed } });
@@ -102,7 +104,7 @@ function CaseDetailPage() {
             ? c.caseType === "Onboarding"
               ? "Joined confirmed"
               : "Left confirmed"
-            : "Case reopened",
+            : "Case workflow reopened; lifecycle unchanged",
         ),
       );
     } catch {
@@ -155,7 +157,7 @@ function CaseDetailPage() {
               <Icon name={c.joinedAt || c.leftAt ? "history" : "check"} />{" "}
               {t(
                 c.joinedAt || c.leftAt
-                  ? "Reopen confirmation"
+                  ? "Reopen workflow"
                   : c.caseType === "Onboarding"
                     ? "Confirm Joined"
                     : "Confirm Left",
@@ -562,7 +564,15 @@ function OverviewTab({ detail }: { detail: CaseDetailDto }) {
         <b>{t("Timeline")}</b>
         <div className="fields">
           <Field label="Start Date" value={c.startDate} />
-          <Field label="End Date" value={c.endDate} />
+          {c.caseType === "Offboarding" ? (
+            <>
+              <Field label="Contract End Date" value={c.contractEndDate} />
+              <Field label="Last Working Day" value={c.lastWorkingDay ?? t("Not confirmed")} />
+              <Field label="Confirmed Leaving Date" value={c.leftDate} />
+            </>
+          ) : (
+            <Field label="Joined Date" value={c.joinedDate} />
+          )}
           <Field label="OWNER" value={c.owner} />
         </div>
       </div>
