@@ -18,7 +18,7 @@ Team Workbench uses one continuous model: `Person → Employment → Case → Ta
 
 Onboarding uses `Preparing → Ready to Join → Joined → Follow-up → Completed`. **Confirm Joined** activates the Employment immediately, records actor/date/timestamp, keeps the Case visible and leaves unfinished tasks open.
 
-Offboarding uses `Preparing → Ready for Exit → Left → Follow-up → Completed`. Creating Offboarding does not remove the Person from Active People. **Confirm Left** ends the Employment and removes the Person from Active People immediately, regardless of the planned date. The Person, Employment and Case remain. Contract End Date and Last Working Day are separate nullable fields.
+Offboarding uses `Preparing → Ready for Exit → Left → Follow-up → Completed`. Creating Offboarding does not remove the Person from Active People. **Confirm Left** ends the Employment and removes the Person from Active People immediately, regardless of the planned date. The Person, Employment and Case remain. Contract End Date is required at Case creation. Last Working Day is a separate, optional field that remains `Not confirmed` until HR adds it later.
 
 Reopen is workflow-only. Reopening a joined or left Case moves it to Follow-up without clearing confirmation metadata or changing the Employment back to planned/active. A future privileged lifecycle-correction feature must be separate and explicit.
 

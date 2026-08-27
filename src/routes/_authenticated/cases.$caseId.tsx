@@ -13,6 +13,7 @@ import {
   toggleChecklistFn,
   toggleTaskFn,
   updateWorkflowItemFn,
+  updateOffboardingDatesFn,
   setCaseConfirmationFn,
   createExternalRequestFn,
 } from "@/lib/workbench.functions";
@@ -180,7 +181,9 @@ function CaseDetailPage() {
         ))}
       </div>
 
-      {tab === "Overview" ? <OverviewTab detail={detail} /> : null}
+      {tab === "Overview" ? (
+        <OverviewTab detail={detail} canEdit={canEdit} refresh={refresh} />
+      ) : null}
       {tab === "Tasks" ? <TasksTab detail={detail} canEdit={canEdit} refresh={refresh} /> : null}
       {tab === "Workflow" ? (
         <WorkflowTab detail={detail} canEdit={canEdit} refresh={refresh} />
@@ -533,9 +536,44 @@ function Field({ label, value }: { label: string; value: string | null | undefin
   );
 }
 
-function OverviewTab({ detail }: { detail: CaseDetailDto }) {
+function OverviewTab({
+  detail,
+  canEdit,
+  refresh,
+}: {
+  detail: CaseDetailDto;
+  canEdit: boolean;
+  refresh: () => void;
+}) {
   const { t } = useLang();
   const c = detail.case;
+  const qc = useQueryClient();
+  const updateDates = useServerFn(updateOffboardingDatesFn);
+  const [dateOpen, setDateOpen] = useState(false);
+  const saveDates = async (values: { contractEndDate: string; lastWorkingDay: string }) => {
+    try {
+      const result = await updateDates({
+        data: {
+          caseId: c.id,
+          contractEndDate: values.contractEndDate,
+          lastWorkingDay: values.lastWorkingDay || undefined,
+        },
+      });
+      if ("error" in result) {
+        toast.error(opErrorMessage(t, result.error));
+        return;
+      }
+      await Promise.all([
+        refresh(),
+        qc.invalidateQueries({ queryKey: ["workbench"] }),
+        qc.invalidateQueries({ queryKey: ["active-roster"] }),
+      ]);
+      setDateOpen(false);
+      toast.success(t("Saved"));
+    } catch {
+      toast.error(t("Something went wrong. Please try again."));
+    }
+  };
   return (
     <div className="overviewgrid">
       <div className="detailcard">
@@ -561,7 +599,14 @@ function OverviewTab({ detail }: { detail: CaseDetailDto }) {
         </div>
       </div>
       <div className="detailcard">
-        <b>{t("Timeline")}</b>
+        <div className="panelhead">
+          <b>{t("Timeline")}</b>
+          {c.caseType === "Offboarding" && canEdit ? (
+            <button className="secondary" onClick={() => setDateOpen(true)}>
+              {t("Edit dates")}
+            </button>
+          ) : null}
+        </div>
         <div className="fields">
           <Field label="Start Date" value={c.startDate} />
           {c.caseType === "Offboarding" ? (
@@ -576,6 +621,16 @@ function OverviewTab({ detail }: { detail: CaseDetailDto }) {
           <Field label="OWNER" value={c.owner} />
         </div>
       </div>
+      {dateOpen ? (
+        <OffboardingDatesModal
+          initial={{
+            contractEndDate: c.contractEndDate ?? "",
+            lastWorkingDay: c.lastWorkingDay ?? "",
+          }}
+          close={() => setDateOpen(false)}
+          save={saveDates}
+        />
+      ) : null}
       <div className="detailcard">
         <b>{c.notes !== null ? t("Notes") : t("Notes (restricted)")}</b>
         {c.notes !== null ? (
@@ -597,6 +652,55 @@ function OverviewTab({ detail }: { detail: CaseDetailDto }) {
         )}
       </div>
     </div>
+  );
+}
+
+function OffboardingDatesModal({
+  initial,
+  close,
+  save,
+}: {
+  initial: { contractEndDate: string; lastWorkingDay: string };
+  close: () => void;
+  save: (values: { contractEndDate: string; lastWorkingDay: string }) => void;
+}) {
+  const { t } = useLang();
+  const [values, setValues] = useState(initial);
+  return (
+    <Modal title={t("Edit offboarding dates")} close={close}>
+      <form
+        className="userform"
+        onSubmit={(event) => {
+          event.preventDefault();
+          save(values);
+        }}
+      >
+        <label>
+          {t("Contract End Date")}
+          <input
+            type="date"
+            required
+            value={values.contractEndDate}
+            onChange={(event) => setValues({ ...values, contractEndDate: event.target.value })}
+          />
+        </label>
+        <label>
+          {t("Last Working Day")} ({t("Optional")})
+          <input
+            type="date"
+            value={values.lastWorkingDay}
+            onChange={(event) => setValues({ ...values, lastWorkingDay: event.target.value })}
+          />
+        </label>
+        <p>{t("Contract End Date and Last Working Day are stored independently.")}</p>
+        <div className="modalactions">
+          <button type="button" className="secondary" onClick={close}>
+            {t("Cancel")}
+          </button>
+          <button className="primary">{t("Save Changes")}</button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 

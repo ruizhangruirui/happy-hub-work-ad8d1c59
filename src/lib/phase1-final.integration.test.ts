@@ -508,7 +508,7 @@ describe("Phase 1 final closure — real PostgreSQL integration", () => {
     await asUser(ADMIN, "select public.transition_lifecycle_case($1,true)", [ids.caseId]);
     const off = await asUser<{ result: { caseId: string } }>(
       ADMIN,
-      "select public.create_offboarding_case_v3($1,$2,null,null,'Voluntary Resignation',null,'Medium',null) result",
+      "select public.create_offboarding_case_v3($1,$2,'2026-09-30',null,'Voluntary Resignation',null,'Medium',null) result",
       [ids.personId, ids.employmentId],
     );
     const tasks = await asUser<{ title: string; owner_team: string }>(
@@ -520,5 +520,48 @@ describe("Phase 1 final closure — real PostgreSQL integration", () => {
     expect(tasks.rows.some((x) => x.title === "Termination Letter")).toBe(false);
     expect(tasks.rows.some((x) => x.title === "Garden Leave Letter")).toBe(false);
     expect(new Set(tasks.rows.map((x) => x.owner_team))).toEqual(new Set(["HR", "IT", "Admin"]));
+  });
+
+  it("requires Contract End Date while keeping Last Working Day independently nullable", async () => {
+    const created = await createOnboarding(ADMIN, TEAM_A, "DATE-MODEL");
+    const ids = created.rows[0]!.result;
+    await asUser(ADMIN, "select public.confirm_joined($1,null)", [ids.caseId]);
+    await expect(
+      asUser(
+        ADMIN,
+        "select public.create_offboarding_case_v3($1,$2,null,null,'Voluntary Resignation',null,'Medium',null)",
+        [ids.personId, ids.employmentId],
+      ),
+    ).rejects.toThrow(/Contract End Date is required/);
+    const off = await asUser<{ result: { caseId: string } }>(
+      ADMIN,
+      "select public.create_offboarding_case_v3($1,$2,'2026-09-30',null,'Voluntary Resignation',null,'Medium',null) result",
+      [ids.personId, ids.employmentId],
+    );
+    let dates = await db.query<{
+      contract_end_date: string;
+      last_working_day: string | null;
+      effective_date: string;
+    }>(
+      "select contract_end_date::text,last_working_day::text,effective_date::text from public.cases where id=$1",
+      [off.rows[0]!.result.caseId],
+    );
+    expect(dates.rows[0]).toEqual({
+      contract_end_date: "2026-09-30",
+      last_working_day: null,
+      effective_date: "2026-09-30",
+    });
+    await asUser(ADMIN, "select public.update_offboarding_dates($1,'2026-09-30','2026-09-15')", [
+      off.rows[0]!.result.caseId,
+    ]);
+    dates = await db.query(
+      "select contract_end_date::text,last_working_day::text,effective_date::text from public.cases where id=$1",
+      [off.rows[0]!.result.caseId],
+    );
+    expect(dates.rows[0]).toEqual({
+      contract_end_date: "2026-09-30",
+      last_working_day: "2026-09-15",
+      effective_date: "2026-09-30",
+    });
   });
 });

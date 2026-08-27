@@ -30,6 +30,7 @@ Onboarding and offboarding often involve HR, administration, IT, reception, lab 
 - A pending offboarding does not remove the employee.
 - Confirm Left immediately removes the employee from Active People while retaining the Person, Employment, Case and follow-up tasks.
 - Contract End Date and Last Working Day are separate fields.
+- Contract End Date is required when Offboarding is created; Last Working Day may remain unconfirmed and can be added later on the same Case.
 - Employee ID is canonical on the Person and is enforced consistently across Employment history by PostgreSQL.
 
 The complete V1 domain, checklist, collaboration, communication and reporting design is documented in [V1 Architecture](docs/V1-ARCHITECTURE.md).
