@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -7,184 +8,308 @@ import {
   completeEmailTaskFn,
   getCaseDetailFn,
   listPublishedTemplatesFn,
+  recordOutlookOpenedFn,
   saveEmailDraftFn,
 } from "@/lib/workbench.functions";
 import { useWorkbench } from "@/components/workbench/CaseList";
-import type { CaseDetailDto, TemplateDto } from "@/lib/types";
+import type { EmailAttachmentDto, TemplateDto } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
 import { opErrorMessage } from "@/lib/errors";
-import { fmtDate } from "@/lib/format";
 import { Empty, Icon, Loading } from "@/components/workbench/ui";
 import { openOutlookDraft } from "@/lib/outlook-draft-service";
+import { resolveEmailVariables, resolveRecipient } from "@/lib/email-compose";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/email")({
   validateSearch: (s: Record<string, unknown>) => ({
     caseId: typeof s["caseId"] === "string" ? s["caseId"] : "",
     taskId: typeof s["taskId"] === "string" ? s["taskId"] : "",
   }),
-  head: () => ({
-    meta: [
-      { title: "Email Center · Team Workbench" },
-      {
-        name: "description",
-        content:
-          "Compose onboarding and offboarding emails from templates with case data auto-fill.",
-      },
-    ],
-  }),
+  head: () => ({ meta: [{ title: "Email Center · Team Workbench" }] }),
   component: EmailPage,
 });
 
-function fill(text: string | null | undefined, vars: Record<string, string>): string {
-  return (text ?? "").replace(
-    /\{\{\s*([\w.]+)\s*\}\}/g,
-    (_, key: string) => vars[key] ?? `{{${key}}}`,
-  );
-}
+type AdditionalAttachment = EmailAttachmentDto & { downloadUrl: string };
 
 export function EmailPage() {
   const { t, lang } = useLang();
-  const search = useSearch({ strict: false }) as { caseId?: string; taskId?: string };
+  const search = useSearch({ strict: false }) as {
+    caseId?: string;
+    taskId?: string;
+    templateId?: string;
+  };
   const qc = useQueryClient();
   const fetchTemplates = useServerFn(listPublishedTemplatesFn);
   const fetchDetail = useServerFn(getCaseDetailFn);
-  const callSaveDraft = useServerFn(saveEmailDraftFn);
-  const callCompleteTask = useServerFn(completeEmailTaskFn);
+  const saveDraft = useServerFn(saveEmailDraftFn);
+  const recordOpened = useServerFn(recordOutlookOpenedFn);
+  const completeTask = useServerFn(completeEmailTaskFn);
   const { data: wbData, isLoading: wbLoading } = useWorkbench();
-  const { data: tplData, isLoading: tplLoading } = useQuery({
-    queryKey: ["templates"],
+  const { data: templateData, isLoading: templateLoading } = useQuery({
+    queryKey: ["email-templates"],
     queryFn: () => fetchTemplates(),
   });
-
   const [caseId, setCaseId] = useState(search.caseId ?? "");
+  const [templateId, setTemplateId] = useState(search.templateId ?? "");
+  const [recipientOverride, setRecipientOverride] = useState("");
+  const [manualValues, setManualValues] = useState<Record<string, string>>({});
+  const [additional, setAdditional] = useState<AdditionalAttachment[]>([]);
+  const [communicationId, setCommunicationId] = useState("");
+  const [opened, setOpened] = useState(false);
   const taskId = search.taskId ?? "";
-  const [templateId, setTemplateId] = useState("");
-  const [extra, setExtra] = useState("");
-  const [manualRecipient, setManualRecipient] = useState("");
-  const [saved, setSaved] = useState(false);
-
   const { data: detailData } = useQuery({
     queryKey: ["case", caseId],
     queryFn: () => fetchDetail({ data: { caseId } }),
     enabled: Boolean(caseId),
   });
-
-  const allTemplates: TemplateDto[] = tplData && !("error" in tplData) ? tplData.templates : [];
-  const detail: CaseDetailDto | null = detailData && !("error" in detailData) ? detailData : null;
+  const templateResult = templateData && !("error" in templateData) ? templateData : null;
+  const detail = detailData && !("error" in detailData) ? detailData : null;
+  const allTemplates: TemplateDto[] = templateResult?.templates ?? [];
   const caseType = detail?.case.caseType.toLowerCase() ?? "";
-  const templates = allTemplates.filter(
-    (x) => !caseType || x.applicableCaseTypes.includes(caseType),
+  const templates = [...allTemplates].sort(
+    (a, b) =>
+      Number(b.applicableCaseTypes.includes(caseType)) -
+      Number(a.applicableCaseTypes.includes(caseType)),
   );
-  const template = templates.find((x) => x.id === templateId) ?? null;
-  const linkedTask = detail?.tasks.find((x) => x.id === taskId) ?? null;
+  const template = templates.find((item) => item.id === templateId) ?? null;
+  const task = detail?.tasks.find((item) => item.id === taskId) ?? null;
 
   useEffect(() => {
-    if (!taskId || templateId || !templates.length) return;
-    const welcome = templates.find(
-      (x) =>
-        x.name.toLowerCase().includes("welcome") || x.subject.toLowerCase().includes("welcome"),
-    );
-    setTemplateId((welcome ?? templates[0])?.id ?? "");
-  }, [taskId, templateId, templates]);
+    if (!templateId && templates.length) setTemplateId(templates[0]!.id);
+  }, [templateId, templates]);
+  useEffect(() => {
+    setCommunicationId("");
+    setOpened(false);
+    setAdditional([]);
+    setManualValues({});
+  }, [caseId, templateId]);
 
-  const vars = useMemo(() => {
-    if (!detail) return {} as Record<string, string>;
-    const c = detail.case;
-    const firstName = c.preferredName || c.givenName || c.name;
-    return {
-      "person.first_name": firstName,
-      "person.full_name": c.name,
-      candidate_name: c.name,
-      candidate_first_name: firstName,
-      employee_name: c.name,
-      "case.start_date": fmtDate(c.startDate, lang),
-      start_date: fmtDate(c.startDate, lang),
-      "case.end_date": fmtDate(c.endDate, lang),
-      employee_id: c.employeeId ?? "",
-      personal_email: c.personEmail ?? "",
-      contract_end_date: fmtDate(c.contractEndDate, lang),
-      last_working_day: fmtDate(c.lastWorkingDay, lang),
-      supervisor_name: c.supervisorName ?? "",
-      team: c.team,
-      employment_type: c.employmentType,
-      workplace: c.location ?? "",
-      "manager.name": c.managerName ?? "",
-      "person.team": c.team,
-      "case.role": c.role ?? "",
-      "manual.additional_information": extra,
-    };
-  }, [detail, extra, lang]);
+  const sources = useMemo(
+    () =>
+      detail
+        ? {
+            person: {
+              display_name: detail.case.name,
+              first_name: detail.case.givenName,
+              preferred_name: detail.case.preferredName,
+              employee_id: detail.case.employeeId,
+              email: detail.case.personEmail,
+              phone: detail.case.phone,
+            },
+            employment: {
+              company_email: detail.case.companyEmail,
+              employment_type: detail.case.employmentType,
+              role: detail.case.role,
+              team: detail.case.team,
+              location: detail.case.location,
+              supervisor_name: detail.case.supervisorName,
+              supervisor_email: detail.case.supervisorEmail,
+              workload: detail.case.workload,
+            },
+            onboarding_case: { start_date: detail.case.startDate },
+            offboarding_case: {
+              contract_end_date: detail.case.contractEndDate,
+              last_working_day: detail.case.lastWorkingDay,
+              leaving_type: (detail.case as unknown as { leavingType?: string }).leavingType,
+              leaving_reason: detail.case.leavingReason,
+            },
+          }
+        : {},
+    [detail],
+  );
+  const compose = template
+    ? resolveEmailVariables({
+        template,
+        globalVariables: templateResult?.globalVariables ?? [],
+        sources,
+        manualValues,
+        locale: lang === "zh" ? "zh-CN" : "en-GB",
+      })
+    : null;
+  const recipient = template
+    ? resolveRecipient({
+        source: template.recipientSource,
+        personalEmail: detail?.case.personEmail,
+        companyEmail: detail?.case.companyEmail,
+        override: recipientOverride,
+      })
+    : "";
+  const manualDefinitions =
+    template?.variableDefinitions.filter((item) => item.sourceType === "manual") ?? [];
+  const validation = [
+    ...(!recipient
+      ? [
+          template?.recipientSource === "company_email"
+            ? t("Company Email is missing from this profile.")
+            : t("Personal Email is missing from this profile."),
+        ]
+      : []),
+    ...(compose?.missingRequired.map((item) => `${item.displayName} ${t("is required")}`) ?? []),
+    ...(compose?.unknownVariables.map((key) => `${t("Unknown variable")}: {{${key}}}`) ?? []),
+  ];
+  const ready = Boolean(
+    detail &&
+    template &&
+    compose &&
+    !validation.length &&
+    compose.renderedSubject.trim() &&
+    compose.renderedBody.trim(),
+  );
 
-  if (wbLoading || tplLoading) return <Loading />;
+  if (wbLoading || templateLoading) return <Loading />;
   const wb = wbData && !("error" in wbData) ? wbData : null;
   if (!wb) return <Empty icon="alert" title={t("Something went wrong. Please try again.")} />;
+  if (
+    !["Admin", "Operator", "Manager"].includes(wb.currentUser.role) ||
+    !wb.currentUser.operationalTeams.includes("HR")
+  )
+    return <Empty icon="alert" title={t("Email Center is restricted to authorized HR users.")} />;
 
-  const subject = template ? fill(template.subject, vars) : "";
-  const body = template ? fill(template.body, vars) : "";
-  const recipient =
-    template?.recipientSource === "manual" ? manualRecipient : (detail?.case.personEmail ?? "");
-  const ready = template && detail;
+  const ensurePrepared = async () => {
+    if (!ready || !template || !compose) return "";
+    if (communicationId) return communicationId;
+    const result = await saveDraft({
+      data: {
+        caseId,
+        taskId: taskId || undefined,
+        templateId: template.id,
+        templateVersion: template.version,
+        subject: compose.renderedSubject,
+        body: compose.renderedBody,
+        recipient,
+      },
+    });
+    if ("error" in result) throw new Error(result.error);
+    setCommunicationId(result.communicationId);
+    return result.communicationId;
+  };
 
-  const saveDraft = async () => {
-    if (!ready) return;
-    try {
-      const res = await callSaveDraft({
-        data: { caseId, templateId, subject, body, recipient },
+  const uploadAdditional = async (file: File) => {
+    if (
+      !caseId ||
+      file.size > 25 * 1024 * 1024 ||
+      ![
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "image/png",
+        "image/jpeg",
+      ].includes(file.type)
+    ) {
+      toast.error(t("Use PDF, DOCX, XLSX, PNG or JPEG files up to 25 MB."));
+      return;
+    }
+    const id = crypto.randomUUID();
+    const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const path = `additional/${caseId}/${id}-${safe}`;
+    const storage = supabase.storage.from("email-attachments");
+    const { error } = await storage.upload(path, file);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    const { data: auth } = await supabase.auth.getUser();
+    const { error: metadataError } = await (supabase as any)
+      .from("email_additional_attachments")
+      .insert({
+        id,
+        case_id: caseId,
+        filename: file.name,
+        storage_path: path,
+        content_type: file.type,
+        size: file.size,
+        uploaded_by: auth.user?.id,
       });
-      if ("error" in res) {
-        toast.error(opErrorMessage(t, res.error));
-        return;
-      }
-      setSaved(true);
-      toast.success(t("Saved"));
-      setTimeout(() => setSaved(false), 2500);
-    } catch {
-      toast.error(t("Something went wrong. Please try again."));
+    if (metadataError) {
+      await storage.remove([path]);
+      toast.error(metadataError.message);
+      return;
+    }
+    const { data: signed, error: signError } = await storage.createSignedUrl(path, 600);
+    if (signError) {
+      toast.error(signError.message);
+      return;
+    }
+    setAdditional((items) => [
+      ...items,
+      {
+        id,
+        filename: file.name,
+        storagePath: path,
+        contentType: file.type,
+        size: file.size,
+        downloadUrl: signed.signedUrl,
+      },
+    ]);
+  };
+
+  const openOutlook = async () => {
+    if (!ready || !template || !compose) return;
+    try {
+      const id = await ensurePrepared();
+      if (!id) return;
+      const signedTemplate = await Promise.all(
+        template.attachments.map(async (item) => {
+          const { data, error } = await supabase.storage
+            .from("email-attachments")
+            .createSignedUrl(item.storagePath, 600);
+          if (error) throw new Error(`${item.filename}: ${error.message}`);
+          return { ...item, downloadUrl: data.signedUrl, source: "template" as const };
+        }),
+      );
+      const result = await openOutlookDraft({
+        to: recipient,
+        subject: compose.renderedSubject,
+        body: compose.renderedBody,
+        attachments: [
+          ...signedTemplate,
+          ...additional.map((item) => ({ ...item, source: "additional" as const })),
+        ],
+      });
+      const event = await recordOpened({
+        data: {
+          communicationId: id,
+          caseId,
+          taskId: taskId || undefined,
+          templateId: template.id,
+          templateVersion: template.version,
+          subject: compose.renderedSubject,
+          recipient,
+        },
+      });
+      if ("error" in event) throw new Error(event.error);
+      setOpened(true);
+      if (!result.attachmentsIncluded && (template.attachments.length || additional.length))
+        toast.warning(t("Attachments must be added manually in Outlook."));
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : t("Something went wrong. Please try again."),
+      );
     }
   };
 
   const markSent = async () => {
-    if (!ready || !linkedTask) return;
-    try {
-      const res = await callCompleteTask({
-        data: { taskId: linkedTask.id, caseId, templateId: template.id, subject, body, recipient },
-      });
-      if ("error" in res) {
-        toast.error(opErrorMessage(t, res.error));
-        return;
-      }
+    if (!opened || !task || !template || !compose || !communicationId) return;
+    const result = await completeTask({
+      data: {
+        taskId: task.id,
+        caseId,
+        templateId: template.id,
+        templateVersion: template.version,
+        communicationId,
+        subject: compose.renderedSubject,
+        body: compose.renderedBody,
+        recipient,
+      },
+    });
+    if ("error" in result) toast.error(opErrorMessage(t, result.error));
+    else {
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["case", caseId] }),
         qc.invalidateQueries({ queryKey: ["workbench"] }),
       ]);
       toast.success(t("Email marked as sent and task completed"));
-    } catch {
-      toast.error(t("Something went wrong. Please try again."));
     }
-  };
-
-  const openOutlook = async () => {
-    if (!ready) return;
-    if (!recipient) {
-      toast.error(t("Recipient is missing. Update the Person profile or enter it manually."));
-      return;
-    }
-    if (
-      !window.confirm(
-        t("Review the recipient, subject, body and attachments before opening Outlook."),
-      )
-    )
-      return;
-    const result = await openOutlookDraft({
-      to: recipient,
-      subject,
-      body,
-      attachments: template.attachments,
-    });
-    if (result.mode === "mailto" && template.attachments.length)
-      toast.warning(
-        t("The local Outlook helper is unavailable. Outlook opened without automatic attachments."),
-      );
   };
 
   return (
@@ -193,132 +318,152 @@ export function EmailPage() {
         <div>
           <p className="eyebrow">{t("COMMUNICATION")}</p>
           <h1>{t("Email Center")}</h1>
-          {linkedTask ? (
-            <p>
-              {t("Linked task")}: <b>{t(linkedTask.title)}</b>
-            </p>
-          ) : null}
+          <p>{t("Team Workbench prepares the draft. You review and send it in Outlook.")}</p>
         </div>
       </div>
-
       <div className="emailgrid">
-        <section className="panel templatelibrary">
-          <div className="columnhead">
-            <b>{t("Template")}</b>
-          </div>
-          {templates.length === 0 ? (
-            <div className="inlineempty">{t("No templates yet.")}</div>
-          ) : (
-            templates.map((tpl) => (
-              <button
-                key={tpl.id}
-                className={`templatecard${tpl.id === templateId ? " active" : ""}`}
-                onClick={() => setTemplateId(tpl.id)}
-              >
-                <span className="templateicon">
-                  <Icon name="mail" />
-                </span>
-                <div>
-                  <b>{tpl.name}</b>
-                  <span>
-                    {t(tpl.category)} · v{tpl.version} · {fmtDate(tpl.updatedAt, lang)}
-                  </span>
-                </div>
-              </button>
-            ))
-          )}
-        </section>
-
         <section className="panel information">
           <div className="columnhead">
-            <b>{t("Select Case")}</b>
+            <b>1. {t("Select")}</b>
           </div>
           <label className="sharefield">
             <span>{t("Select Case")}</span>
             <select value={caseId} onChange={(e) => setCaseId(e.target.value)}>
               <option value="">—</option>
-              {wb.cases.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} · {t(c.caseType)}
+              {wb.cases.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name} · {t(item.caseType)}
                 </option>
               ))}
             </select>
           </label>
-          {detail ? (
-            <>
-              <div className="chips">
-                <span className="badge b-active">{t("Auto-filled from case data")}</span>
-              </div>
-              <div className="fields">
-                <div className="inputvalue">
-                  <span>{t("First Name")}</span>
-                  <b>{vars["person.first_name"]}</b>
-                </div>
-                <div className="inputvalue">
-                  <span>{t("Start Date")}</span>
-                  <b>{vars["case.start_date"]}</b>
-                </div>
-                <div className="inputvalue">
-                  <span>{t("Manager")}</span>
-                  <b>{vars["manager.name"] || "—"}</b>
-                </div>
-                <div className="inputvalue">
-                  <span>{t("To")}</span>
-                  <b className="recipient">{recipient || "—"}</b>
-                </div>
-              </div>
-              <label className="sharefield">
+          <label className="sharefield">
+            <span>{t("Template")}</span>
+            <select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
+              <option value="">—</option>
+              {templates.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.applicableCaseTypes.includes(caseType) ? "★ " : ""}
+                  {item.name} · v{item.version}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="sharefield">
+            <span>
+              {t("To")} ·{" "}
+              {template
+                ? t(
+                    template.recipientSource === "company_email"
+                      ? "Company Email"
+                      : template.recipientSource === "personal_email"
+                        ? "Personal Email"
+                        : "Manual recipient",
+                  )
+                : ""}
+            </span>
+            <input
+              type="email"
+              value={recipientOverride || recipient}
+              onChange={(e) => setRecipientOverride(e.target.value)}
+              placeholder={t("Enter recipient manually")}
+            />
+          </label>
+          <div className="columnhead">
+            <b>2. {t("Missing / Manual Information")}</b>
+          </div>
+          {manualDefinitions.length ? (
+            manualDefinitions.map((item) => (
+              <label className="sharefield" key={item.key}>
                 <span>
-                  {t("Additional Information")} ({t("Manual")})
+                  {item.displayName}
+                  {item.required ? " *" : ""}
                 </span>
-                <textarea
-                  rows={3}
-                  value={extra}
-                  onChange={(e) => setExtra(e.target.value)}
-                  maxLength={1000}
+                <input
+                  type={
+                    item.dataType === "date" ? "date" : item.dataType === "email" ? "email" : "text"
+                  }
+                  value={manualValues[item.key] ?? item.defaultValue ?? ""}
+                  onChange={(e) =>
+                    setManualValues((values) => ({ ...values, [item.key]: e.target.value }))
+                  }
                 />
               </label>
-              {template?.recipientSource === "manual" ? (
-                <label className="sharefield">
-                  <span>{t("Manual recipient")}</span>
-                  <input
-                    type="email"
-                    value={manualRecipient}
-                    onChange={(e) => setManualRecipient(e.target.value)}
-                  />
-                </label>
-              ) : null}
-            </>
+            ))
           ) : (
-            <div className="inlineempty">{t("Select a template and case to begin")}</div>
+            <p className="inlineempty">{t("No manual information required.")}</p>
           )}
+          <div className="columnhead">
+            <b>{t("Attachments")}</b>
+          </div>
+          <p>
+            <b>{t("Template Attachments")}</b>:{" "}
+            {template?.attachments.map((item) => item.filename).join(", ") || t("No attachments")}
+          </p>
+          <p>
+            <b>{t("Additional Attachments")}</b>:{" "}
+            {additional.map((item) => (
+              <span className="variable" key={item.id}>
+                {item.filename}{" "}
+                <button
+                  onClick={() => {
+                    void supabase.storage.from("email-attachments").remove([item.storagePath]);
+                    void (supabase as any)
+                      .from("email_additional_attachments")
+                      .delete()
+                      .eq("id", item.id);
+                    setAdditional((list) => list.filter((file) => file.id !== item.id));
+                  }}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </p>
+          <label className="secondary">
+            <Icon name="plus" /> {t("Add Attachment")}
+            <input
+              hidden
+              type="file"
+              accept=".pdf,.docx,.xlsx,.png,.jpg,.jpeg"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void uploadAdditional(file);
+                e.target.value = "";
+              }}
+            />
+          </label>
         </section>
-
         <section className="panel preview">
           <div className="columnhead">
-            <b>{t("Subject")}</b>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button className="secondary" disabled={!ready} onClick={saveDraft}>
-                {saved ? t("Saved") : t("Save Draft")}
+            <b>3. {t("Review")}</b>
+            <div className="actions">
+              <button className="primary" disabled={!ready} onClick={openOutlook}>
+                <Icon name="send" /> 4. {t("Open in Outlook")}
               </button>
-              <button className="primary" disabled={!ready || !recipient} onClick={openOutlook}>
-                <Icon name="send" /> {t("Open in Outlook")}
-              </button>
-              {linkedTask ? (
+              {task ? (
                 <button
                   className="successbutton"
-                  disabled={!ready || linkedTask.status.toLowerCase() === "completed"}
+                  disabled={!opened || task.status === "Completed"}
                   onClick={markSent}
                 >
-                  <Icon name="check" />
-                  {linkedTask.status.toLowerCase() === "completed"
-                    ? t("Email Sent")
-                    : t("Mark as Sent")}
+                  <Icon name="check" />{" "}
+                  {task.status === "Completed" ? t("Email Sent") : t("Mark as Sent")}
                 </button>
               ) : null}
             </div>
           </div>
-          {ready ? (
+          {validation.length ? (
+            <div className="autherror">
+              <b>{t("Cannot prepare email yet")}</b>
+              <ul>
+                {validation.map((message) => (
+                  <li key={message}>{message}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {compose ? (
             <>
               <div className="emailmeta">
                 <div>
@@ -327,24 +472,18 @@ export function EmailPage() {
                 </div>
                 <div>
                   <span>{t("Subject")}</span>
-                  <b>{subject}</b>
+                  <b>{compose.renderedSubject}</b>
                 </div>
               </div>
               <div className="emailbody">
-                <pre style={{ whiteSpace: "pre-wrap", font: "inherit", margin: 0 }}>{body}</pre>
+                <pre style={{ whiteSpace: "pre-wrap", font: "inherit", margin: 0 }}>
+                  {compose.renderedBody}
+                </pre>
               </div>
-              <div className="chips">
-                <b>{t("Attachments")}</b>
-                {template.attachments.length ? (
-                  template.attachments.map((a) => (
-                    <span className="variable" key={a.id}>
-                      {a.filename}
-                    </span>
-                  ))
-                ) : (
-                  <span>{t("No attachments")}</span>
-                )}
-              </div>
+              <p>
+                {t("Outlook mode")}:{" "}
+                {t("Full integration is attempted first; mailto fallback cannot add attachments.")}
+              </p>
             </>
           ) : (
             <div className="inlineempty">

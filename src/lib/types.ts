@@ -201,11 +201,13 @@ export interface CaseDetailDto {
     givenName: string | null;
     preferredName: string | null;
     personEmail: string | null;
+    companyEmail: string | null;
     employeeId: string | null;
     phone: string | null;
     managerName: string | null;
     workload: string | null;
     contractType: string | null;
+    leavingReason: string | null;
     notes: string | null;
   };
   checklist: ChecklistDto[];
@@ -235,6 +237,8 @@ export interface TemplateDto {
   recipientSource: "personal_email" | "company_email" | "manual";
   variableDefinitions: EmailVariableDto[];
   attachments: EmailAttachmentDto[];
+  archivedAt: string | null;
+  createdAt: string;
 }
 
 export interface EmailVariableDto {
@@ -253,6 +257,12 @@ export interface EmailAttachmentDto {
   storagePath: string;
   contentType: string | null;
   size: number;
+}
+
+export interface EmailComposeDataDto {
+  templates: TemplateDto[];
+  globalVariables: EmailVariableDto[];
+  canManageTemplates: boolean;
 }
 
 export interface PeopleRowDto {

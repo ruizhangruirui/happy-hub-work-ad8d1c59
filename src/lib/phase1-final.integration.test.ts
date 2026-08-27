@@ -58,6 +58,13 @@ async function bootstrapSupabaseSchemas() {
       owner uuid,
       metadata jsonb
     );
+    create table storage.buckets (
+      id text primary key,name text not null,public boolean default false,file_size_limit bigint,
+      allowed_mime_types text[]
+    );
+    create or replace function storage.foldername(name text) returns text[] language sql immutable as $$
+      select string_to_array(name,'/')
+    $$;
     alter table storage.objects enable row level security;
   `);
 }
@@ -897,5 +904,97 @@ describe("Phase 2 closure — capability and Checklist consistency", () => {
         ADMIN_TEAM_USER,
       ]),
     ).rejects.toThrow();
+  });
+});
+
+describe("Phase 3 Email Center — PostgreSQL security and history", () => {
+  it("keeps HR templates and private attachment objects away from IT users", async () => {
+    const template = await db.query<{ id: string }>(
+      "select id from public.email_templates limit 1",
+    );
+    const templateId = template.rows[0]!.id;
+    await db.query(
+      `insert into storage.objects(id,bucket_id,name,owner,metadata)
+       values(gen_random_uuid(),'email-attachments',$1,$2,'{}')`,
+      [`email-templates/${templateId}/guide.pdf`, ADMIN],
+    );
+    const itTemplates = await asUser(IT_USER, "select id from public.email_templates");
+    const itFiles = await asUser(
+      IT_USER,
+      "select name from storage.objects where bucket_id='email-attachments'",
+    );
+    expect(itTemplates.rowCount).toBe(0);
+    expect(itFiles.rowCount).toBe(0);
+    expect((await asUser(ADMIN, "select id from public.email_templates")).rowCount).toBeGreaterThan(
+      0,
+    );
+  });
+
+  it("rejects an unknown variable when validating publication", async () => {
+    const inserted = await asUser<{ id: string }>(
+      ADMIN,
+      `insert into public.email_templates(name,category,owner_id,created_by,status,subject,body_html,variables)
+       values('Broken','General',$1,$1,'Draft','Hello','{{unknown_xyz}}','[]') returning id`,
+      [ADMIN],
+    );
+    const result = await asUser<{ errors: string[] }>(
+      ADMIN,
+      "select public.validate_email_template_for_publish($1) errors",
+      [inserted.rows[0]!.id],
+    );
+    expect(result.rows[0]!.errors).toContain("Unknown variable: {{unknown_xyz}}");
+  });
+
+  it("does not complete an email Task until HR explicitly marks it sent", async () => {
+    const created = await createOnboarding(ADMIN, TEAM_A, "P3-EMAIL");
+    const caseId = created.rows[0]!.result.caseId;
+    const task = await db.query<{ id: string }>(
+      "select id from public.tasks where case_id=$1 and owner_team='HR' and (lower(task_type)='email' or lower(title) like '%email%') limit 1",
+      [caseId],
+    );
+    const template = await db.query<{ id: string; version: number }>(
+      "select id,version from public.email_templates where status='Published' limit 1",
+    );
+    const args = [
+      caseId,
+      task.rows[0]!.id,
+      template.rows[0]!.id,
+      template.rows[0]!.version,
+      "peter@example.com",
+      "Welcome",
+    ];
+    const prepared = await asUser<{ id: string }>(
+      ADMIN,
+      "select public.record_email_event($1,$2,$3,$4,$5,$6,'Draft Prepared',null) id",
+      args,
+    );
+    expect(
+      (
+        await db.query<{ status: string }>("select status from public.tasks where id=$1", [
+          task.rows[0]!.id,
+        ])
+      ).rows[0]!.status,
+    ).not.toBe("Completed");
+    await asUser(
+      ADMIN,
+      "select public.record_email_event($1,$2,$3,$4,$5,$6,'Opened in Outlook',$7)",
+      [...args, prepared.rows[0]!.id],
+    );
+    expect(
+      (
+        await db.query<{ status: string }>("select status from public.tasks where id=$1", [
+          task.rows[0]!.id,
+        ])
+      ).rows[0]!.status,
+    ).not.toBe("Completed");
+    await asUser(ADMIN, "select public.record_email_event($1,$2,$3,$4,$5,$6,'Marked Sent',$7)", [
+      ...args,
+      prepared.rows[0]!.id,
+    ]);
+    const state = await db.query<{ status: string; completed_by: string }>(
+      "select status,completed_by::text completed_by from public.tasks where id=$1",
+      [task.rows[0]!.id],
+    );
+    expect(state.rows[0]).toEqual({ status: "Completed", completed_by: ADMIN });
   });
 });

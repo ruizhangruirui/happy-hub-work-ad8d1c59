@@ -18,6 +18,7 @@ import type {
   WorkflowItemDto,
   RosterPersonDto,
   ExternalRequestDto,
+  EmailVariableDto,
   PeopleRowDto,
   PersonDetailDto,
   ChecklistTemplateDto,
@@ -327,7 +328,7 @@ export async function getCaseDetail(
     const { data: fullRow, error } = await supabase
       .from("cases")
       .select(
-        "*, persons(full_name, email, employee_id, phone, lab_id, team_id, teams(name), manager:manager_id(full_name))",
+        "*, persons(full_name, given_name, preferred_name, email, employee_id, phone, lab_id, team_id, teams(name), manager:manager_id(full_name)), employments(company_email,workload)",
       )
       .eq("id", caseId)
       .maybeSingle();
@@ -528,6 +529,7 @@ export async function getCaseDetail(
     case: {
       ...toCaseDto(r, access, nameOf),
       personEmail: person.email ?? null,
+      companyEmail: r.employments?.company_email ?? null,
       givenName: person.given_name ?? null,
       preferredName: person.preferred_name ?? null,
       employeeId: person.employee_id ?? null,
@@ -535,6 +537,7 @@ export async function getCaseDetail(
       managerName: person.manager?.full_name ?? null,
       workload: r.workload ?? null,
       contractType: r.contract_type ?? null,
+      leavingReason: r.leaving_reason ?? null,
       notes: canSeeNotes ? (r.notes ?? null) : null,
     },
     checklist,
@@ -1230,17 +1233,24 @@ export async function saveUser(supabase: Db, userId: string, input: SaveUserInpu
 export async function listTemplates(
   supabase: Db,
   userId: string,
-): Promise<{ templates: TemplateDto[] } | { error: "access_denied" }> {
+): Promise<
+  | { templates: TemplateDto[]; globalVariables: EmailVariableDto[]; canManageTemplates: boolean }
+  | { error: "access_denied" }
+> {
   const identity = await loadIdentity(supabase, userId);
   if (!identity) return { error: "access_denied" };
-  const { data, error } = await supabase
-    .from("email_templates")
-    .select("*")
-    .order("category")
-    .order("name");
-  if (error) throw new Error(error.message);
+  const [templatesResult, variablesResult] = await Promise.all([
+    supabase
+      .from("email_templates")
+      .select("*, email_template_attachments(*), email_template_variables(*)")
+      .order("category")
+      .order("name"),
+    supabase.from("email_variable_library").select("*").eq("active", true).order("display_name"),
+  ]);
+  if (templatesResult.error) throw new Error(templatesResult.error.message);
+  if (variablesResult.error) throw new Error(variablesResult.error.message);
   return {
-    templates: ((data ?? []) as any[]).map((t) => ({
+    templates: ((templatesResult.data ?? []) as any[]).map((t) => ({
       id: t.id,
       name: t.name,
       category: t.category,
@@ -1256,18 +1266,16 @@ export async function listTemplates(
       description: t.description ?? "",
       recipientSource: (t.recipient_source ?? "personal_email") as
         "personal_email" | "company_email" | "manual",
-      variableDefinitions: ((t.variables ?? []) as any[])
-        .filter((v) => typeof v === "object")
-        .map((v) => ({
-          key: v.key,
-          displayName: v.displayName ?? v.key,
-          dataType: v.dataType ?? "text",
-          sourceType: v.sourceType ?? "manual",
-          sourceField: v.sourceField ?? null,
-          required: Boolean(v.required),
-          defaultValue: v.defaultValue ?? null,
-          description: v.description ?? null,
-        })),
+      variableDefinitions: ((t.email_template_variables ?? []) as any[]).map((v) => ({
+        key: v.variable_key,
+        displayName: v.display_name ?? v.variable_key,
+        dataType: v.data_type ?? "text",
+        sourceType: "manual",
+        sourceField: null,
+        required: Boolean(v.required),
+        defaultValue: v.default_value ?? null,
+        description: v.description ?? null,
+      })),
       attachments: ((t.email_template_attachments ?? []) as any[]).map((a) => ({
         id: a.id,
         filename: a.filename,
@@ -1275,7 +1283,20 @@ export async function listTemplates(
         contentType: a.content_type ?? null,
         size: a.size ?? 0,
       })),
+      archivedAt: t.archived_at ?? null,
+      createdAt: t.created_at,
     })),
+    globalVariables: ((variablesResult.data ?? []) as any[]).map((v) => ({
+      key: v.variable_key,
+      displayName: v.display_name,
+      dataType: v.data_type,
+      sourceType: v.source_type,
+      sourceField: v.source_field ?? null,
+      required: Boolean(v.required),
+      defaultValue: v.default_value ?? null,
+      description: v.description ?? null,
+    })),
+    canManageTemplates: ["admin", "operator"].includes(identity.role),
   };
 }
 
@@ -1468,19 +1489,21 @@ export async function listPublishedTemplates(supabase: Db, userId: string) {
   const result = await listTemplates(supabase, userId);
   return "error" in result
     ? result
-    : { templates: result.templates.filter((t) => t.status === "Published") };
+    : { ...result, templates: result.templates.filter((t) => t.status === "Published") };
 }
 
 export interface SaveTemplateInput {
   id?: string | undefined;
   name: string;
   category: string;
-  status: "Draft" | "Published";
+  status: "Draft" | "Published" | "Archived";
   subject: string;
   body: string;
   variables: string[];
   description?: string | undefined;
   recipientSource?: "personal_email" | "company_email" | "manual" | undefined;
+  applicableCaseTypes: string[];
+  variableDefinitions: EmailVariableDto[];
 }
 
 function cleanVariables(values: string[]) {
@@ -1513,23 +1536,27 @@ export async function saveTemplate(supabase: Db, userId: string, input: SaveTemp
     variables: cleanVariables(input.variables),
     description: input.description?.trim() || null,
     recipient_source: input.recipientSource ?? "personal_email",
-    applicable_case_types:
-      input.category.trim().toLowerCase() === "onboarding"
-        ? ["onboarding"]
-        : input.category.trim().toLowerCase() === "offboarding"
-          ? ["offboarding"]
-          : ["onboarding", "offboarding"],
+    applicable_case_types: input.applicableCaseTypes,
+    archived_at: input.status === "Archived" ? new Date().toISOString() : null,
+    published_at: input.status === "Published" ? new Date().toISOString() : null,
     updated_at: new Date().toISOString(),
   };
 
   if (input.id) {
     const { data: existing } = await supabase
       .from("email_templates")
-      .select("id,name")
+      .select("id,name,version")
       .eq("id", input.id)
       .maybeSingle();
     if (!existing) return { error: "not_found" as const };
-    const { error } = await supabase.from("email_templates").update(payload).eq("id", input.id);
+    const { error } = await supabase
+      .from("email_templates")
+      .update({
+        ...payload,
+        status: input.status === "Published" ? "Draft" : input.status,
+        version: Number((existing as any).version ?? 1) + 1,
+      })
+      .eq("id", input.id);
     if (error) {
       if (error.code === "42501") return { error: "forbidden" as const };
       throw new Error(error.message);
@@ -1543,17 +1570,58 @@ export async function saveTemplate(supabase: Db, userId: string, input: SaveTemp
       previous_value: existing.name,
       new_value: payload.name,
     });
+    const { error: variableError } = await supabase.rpc("replace_email_template_variables", {
+      _template_id: input.id,
+      _variables: input.variableDefinitions,
+    });
+    if (variableError) throw new Error(variableError.message);
+    if (input.status === "Published") {
+      const { data: validation } = await supabase.rpc("validate_email_template_for_publish", {
+        _template_id: input.id,
+      });
+      if ((validation as string[] | null)?.length)
+        return { error: "invalid_template" as const, details: validation };
+      const { error: publishError } = await supabase
+        .from("email_templates")
+        .update({ status: "Published", published_at: new Date().toISOString() })
+        .eq("id", input.id);
+      if (publishError) throw new Error(publishError.message);
+    }
     return { ok: true as const, id: input.id };
   }
 
   const { data, error } = await supabase
     .from("email_templates")
-    .insert({ ...payload, owner_id: userId, language: "en", version: 1 })
+    .insert({
+      ...payload,
+      status: input.status === "Published" ? "Draft" : input.status,
+      owner_id: userId,
+      created_by: userId,
+      language: "en",
+      version: 1,
+    })
     .select("id")
     .single();
   if (error) {
     if (error.code === "42501") return { error: "forbidden" as const };
     throw new Error(error.message);
+  }
+  const { error: variableError } = await supabase.rpc("replace_email_template_variables", {
+    _template_id: data.id,
+    _variables: input.variableDefinitions,
+  });
+  if (variableError) throw new Error(variableError.message);
+  if (input.status === "Published") {
+    const { data: validation } = await supabase.rpc("validate_email_template_for_publish", {
+      _template_id: data.id,
+    });
+    if ((validation as string[] | null)?.length)
+      return { error: "invalid_template" as const, details: validation };
+    const { error: publishError } = await supabase
+      .from("email_templates")
+      .update({ status: "Published", published_at: new Date().toISOString() })
+      .eq("id", data.id);
+    if (publishError) throw new Error(publishError.message);
   }
   await supabase.from("audit_logs").insert({
     actor_id: userId,
@@ -1566,21 +1634,56 @@ export async function saveTemplate(supabase: Db, userId: string, input: SaveTemp
 
 export async function saveEmailDraft(
   supabase: Db,
-  userId: string,
-  input: { caseId: string; templateId: string; subject: string; body: string; recipient: string },
+  _userId: string,
+  input: {
+    caseId: string;
+    taskId?: string | undefined;
+    templateId: string;
+    templateVersion: number;
+    subject: string;
+    body: string;
+    recipient: string;
+  },
 ) {
-  const { error } = await supabase.from("audit_logs").insert({
-    actor_id: userId,
-    entity_type: "case",
-    entity_id: input.caseId,
-    action: "Email draft saved",
-    metadata: {
-      templateId: input.templateId,
-      subject: input.subject,
-      recipient: input.recipient,
-      body: input.body,
-    },
-    case_id: input.caseId,
+  const { data, error } = await supabase.rpc("record_email_event", {
+    _case_id: input.caseId,
+    _task_id: input.taskId ?? null,
+    _template_id: input.templateId,
+    _template_version: input.templateVersion,
+    _recipient: input.recipient,
+    _subject: input.subject,
+    _state: "Draft Prepared",
+    _communication_id: null,
+  });
+  if (error) {
+    if (error.code === "42501") return { error: "forbidden" as const };
+    throw new Error(error.message);
+  }
+  return { ok: true as const, communicationId: data as string };
+}
+
+export async function recordEmailOpened(
+  supabase: Db,
+  _userId: string,
+  input: {
+    communicationId: string;
+    caseId: string;
+    taskId?: string | undefined;
+    templateId: string;
+    templateVersion: number;
+    subject: string;
+    recipient: string;
+  },
+) {
+  const { error } = await supabase.rpc("record_email_event", {
+    _case_id: input.caseId,
+    _task_id: input.taskId ?? null,
+    _template_id: input.templateId,
+    _template_version: input.templateVersion,
+    _recipient: input.recipient,
+    _subject: input.subject,
+    _state: "Opened in Outlook",
+    _communication_id: input.communicationId,
   });
   if (error) {
     if (error.code === "42501") return { error: "forbidden" as const };
@@ -1599,23 +1702,27 @@ export async function completeEmailTask(
     subject: string;
     body: string;
     recipient: string;
+    communicationId: string;
+    templateVersion: number;
   },
 ) {
   const identity = await loadIdentity(supabase, userId);
   if (!identity) return { error: "access_denied" as const };
-  const { data, error } = await supabase.rpc("complete_email_task", {
+  const { data, error } = await supabase.rpc("record_email_event", {
     _task_id: input.taskId,
     _case_id: input.caseId,
     _template_id: input.templateId,
+    _template_version: input.templateVersion,
     _subject: input.subject,
-    _body: input.body,
     _recipient: input.recipient,
+    _state: "Marked Sent",
+    _communication_id: input.communicationId,
   });
   if (error) {
     if (error.code === "42501") return { error: "forbidden" as const };
     throw new Error(error.message);
   }
-  if (data === false) return { error: "forbidden" as const };
+  if (!data) return { error: "forbidden" as const };
   return { ok: true as const };
 }
 

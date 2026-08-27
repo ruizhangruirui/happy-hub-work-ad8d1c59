@@ -346,12 +346,35 @@ export const saveTemplateFn = createServerFn({ method: "POST" })
         id: z.string().uuid().optional(),
         name: z.string().min(1).max(160),
         category: z.string().min(1).max(80),
-        status: z.enum(["Draft", "Published"]),
+        status: z.enum(["Draft", "Published", "Archived"]),
         subject: z.string().min(1).max(300),
         body: z.string().min(1).max(20000),
         variables: z.array(z.string().max(120)).max(50),
         description: z.string().max(1000).optional(),
         recipientSource: z.enum(["personal_email", "company_email", "manual"]).optional(),
+        applicableCaseTypes: z.array(z.enum(["onboarding", "offboarding"])).max(2),
+        variableDefinitions: z
+          .array(
+            z.object({
+              key: z.string().regex(/^[a-z][a-z0-9_]*$/),
+              displayName: z.string().min(1).max(120),
+              dataType: z.enum([
+                "text",
+                "date",
+                "email",
+                "number",
+                "boolean",
+                "dropdown",
+                "choice",
+              ]),
+              sourceType: z.literal("manual"),
+              sourceField: z.string().nullable(),
+              required: z.boolean(),
+              defaultValue: z.string().max(1000).nullable(),
+              description: z.string().max(1000).nullable(),
+            }),
+          )
+          .max(50),
       })
       .parse(data),
   )
@@ -367,6 +390,8 @@ export const saveEmailDraftFn = createServerFn({ method: "POST" })
         subject: z.string().min(1).max(300),
         body: z.string().max(20000),
         recipient: z.string().max(320),
+        taskId: z.string().uuid().optional(),
+        templateVersion: z.number().int().positive(),
       })
       .parse(data),
   )
@@ -385,11 +410,32 @@ export const completeEmailTaskFn = createServerFn({ method: "POST" })
         subject: z.string().min(1).max(300),
         body: z.string().max(20000),
         recipient: z.string().max(320),
+        communicationId: z.string().uuid(),
+        templateVersion: z.number().int().positive(),
       })
       .parse(data),
   )
   .handler(({ data, context }) =>
     wb.completeEmailTask(context.supabase as wb.Db, context.userId, data),
+  );
+
+export const recordOutlookOpenedFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) =>
+    z
+      .object({
+        communicationId: z.string().uuid(),
+        caseId: z.string().uuid(),
+        taskId: z.string().uuid().optional(),
+        templateId: z.string().uuid(),
+        templateVersion: z.number().int().positive(),
+        subject: z.string().min(1).max(300),
+        recipient: z.string().email().max(320),
+      })
+      .parse(data),
+  )
+  .handler(({ data, context }) =>
+    wb.recordEmailOpened(context.supabase as wb.Db, context.userId, data),
   );
 
 export const assignChecklistOwnerFn = createServerFn({ method: "POST" })
