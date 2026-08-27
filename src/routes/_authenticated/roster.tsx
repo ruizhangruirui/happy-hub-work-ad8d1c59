@@ -196,6 +196,7 @@ function ActiveRosterPage() {
                   click={setSortKey}
                 />
                 <th>{t("Supervisor")}</th>
+                <th>{t("Leaving details")}</th>
               </tr>
             </thead>
             <tbody>
@@ -220,6 +221,13 @@ function ActiveRosterPage() {
                   <td>{x.location ?? "—"}</td>
                   <td>{fmtDate(x.startDate, lang)}</td>
                   <td>{x.supervisorName ?? "—"}</td>
+                  <td>
+                    {x.leaving
+                      ? x.lastWorkingDay
+                        ? fmtDate(x.lastWorkingDay, lang)
+                        : t("Last Working Day not confirmed")
+                      : "—"}
+                  </td>
                 </tr>
               ))}
             </tbody>

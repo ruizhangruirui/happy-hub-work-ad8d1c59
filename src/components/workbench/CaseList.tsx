@@ -88,7 +88,7 @@ export function CaseList({ caseType }: { caseType: "onboarding" | "offboarding" 
         <div>
           <p className="eyebrow">{t(title)}</p>
           <h1>
-            {filtered.length} {t("active cases across your scope")}
+            {filtered.length} {t("current and historical cases across your scope")}
           </h1>
         </div>
         {canCreate ? (
@@ -180,7 +180,7 @@ export function CaseList({ caseType }: { caseType: "onboarding" | "offboarding" 
           </div>
           {filtered.map((c) => (
             <div
-              className="row"
+              className={`row ${["Joined", "Left", "Completed"].includes(c.status) ? "lifecycle-success" : ""}`}
               key={c.id}
               onClick={() => navigate({ to: "/cases/$caseId", params: { caseId: c.id } })}
             >

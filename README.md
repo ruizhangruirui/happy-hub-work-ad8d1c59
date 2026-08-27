@@ -34,6 +34,12 @@ Onboarding and offboarding often involve HR, administration, IT, reception, lab 
 
 The complete V1 domain, checklist, collaboration, communication and reporting design is documented in [V1 Architecture](docs/V1-ARCHITECTURE.md).
 
+## Phase Status
+
+**Implemented and hardened in Phase 1:** canonical Person/Employment/Case separation; onboarding without Employee ID; same-Person identity enrichment; Confirm Joined; Confirm Left; separate Contract End Date and Last Working Day; pending-leaver Active People behavior; permanent Onboarding/Offboarding history; confirmation audit metadata; lifecycle-safe workflow reopen.
+
+**Later-phase work:** checklist-rule configuration, IT/Admin collaboration UX, Email Center V2, Outlook attachment helper, export refinements and People Analytics remain separate product phases. Some foundations or early UI may exist in the repository, but they are not part of the Phase 1 completion claim.
+
 ## Technology Stack
 
 | Area                    | Technology                                                  |

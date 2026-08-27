@@ -905,6 +905,30 @@ export async function setCaseConfirmation(
   return { ok: true as const };
 }
 
+export async function updatePersonIdentity(
+  supabase: Db,
+  userId: string,
+  input: {
+    personId: string;
+    employeeId?: string | undefined;
+    email?: string | undefined;
+    phone?: string | undefined;
+  },
+) {
+  if (!(await loadIdentity(supabase, userId))) return { error: "forbidden" as const };
+  const { data, error } = await supabase.rpc("update_person_identity", {
+    _person_id: input.personId,
+    _employee_id: input.employeeId || null,
+    _email: input.email || null,
+    _phone: input.phone || null,
+  });
+  if (error) {
+    if (error.code === "42501") return { error: "forbidden" as const };
+    throw new Error(error.message);
+  }
+  return { ok: true as const, personId: (data as any).personId as string };
+}
+
 export async function setTaskStatus(
   supabase: Db,
   userId: string,
