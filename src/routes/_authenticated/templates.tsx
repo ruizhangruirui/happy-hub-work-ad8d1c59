@@ -15,7 +15,10 @@ export const Route = createFileRoute("/_authenticated/templates")({
   head: () => ({
     meta: [
       { title: "Template Manager · Team Workbench" },
-      { name: "description", content: "Email templates for onboarding and offboarding communications." },
+      {
+        name: "description",
+        content: "Email templates for onboarding and offboarding communications.",
+      },
     ],
   }),
   component: TemplatesPage,
@@ -25,7 +28,10 @@ function TemplatesPage() {
   const { t, lang } = useLang();
   const fetchTemplates = useServerFn(listTemplatesFn);
   const { data: wbData } = useWorkbench();
-  const { data, isLoading } = useQuery({ queryKey: ["templates"], queryFn: () => fetchTemplates() });
+  const { data, isLoading } = useQuery({
+    queryKey: ["templates"],
+    queryFn: () => fetchTemplates(),
+  });
   const [category, setCategory] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [editing, setEditing] = useState<TemplateDto | "new" | null>(null);
@@ -35,7 +41,8 @@ function TemplatesPage() {
   const categories = [...new Set(templates.map((x) => x.category))];
   const filtered = templates.filter((x) => !category || x.category === category);
   const current = templates.find((x) => x.id === selected) ?? filtered[0] ?? null;
-  const wb: WorkbenchData | null = wbData && !("error" in wbData) ? (wbData as WorkbenchData) : null;
+  const wb: WorkbenchData | null =
+    wbData && !("error" in wbData) ? (wbData as WorkbenchData) : null;
   const canManage = wb ? ["Admin", "Operator"].includes(wb.currentUser.role) : false;
 
   return (
@@ -98,7 +105,9 @@ function TemplatesPage() {
                 <div className="panelhead">
                   <div>
                     <b className="templatebig">{current.name}</b>
-                    <span>{t("Last Updated")} {fmtDate(current.updatedAt, lang)}</span>
+                    <span>
+                      {t("Last Updated")} {fmtDate(current.updatedAt, lang)}
+                    </span>
                   </div>
                   <div className="actions">
                     <Badge>{current.status}</Badge>
@@ -107,7 +116,17 @@ function TemplatesPage() {
                         <button className="secondary" onClick={() => setEditing(current)}>
                           <Icon name="settings" /> {t("Edit Template")}
                         </button>
-                        <button className="secondary" onClick={() => setEditing({ ...current, id: "", name: `${current.name} Copy`, status: "Draft" })}>
+                        <button
+                          className="secondary"
+                          onClick={() =>
+                            setEditing({
+                              ...current,
+                              id: "",
+                              name: `${current.name} Copy`,
+                              status: "Draft",
+                            })
+                          }
+                        >
                           <Icon name="template" /> {t("Duplicate")}
                         </button>
                       </>
@@ -146,7 +165,9 @@ function TemplatesPage() {
                   <b>{t("Body Preview")}</b>
                 </div>
                 <div className="bodymini">
-                  <pre style={{ whiteSpace: "pre-wrap", font: "inherit", margin: 0 }}>{current.body}</pre>
+                  <pre style={{ whiteSpace: "pre-wrap", font: "inherit", margin: 0 }}>
+                    {current.body}
+                  </pre>
                 </div>
               </>
             ) : null}
@@ -190,7 +211,11 @@ function TemplateModal({
     status: (template?.status === "Published" ? "Published" : "Draft") as "Draft" | "Published",
     subject: template?.subject ?? "",
     body: template?.body ?? "",
-    variables: template?.variables.join("\n") ?? "person.first_name\nperson.full_name\ncase.start_date\nmanager.name",
+    variables:
+      template?.variables.join("\n") ??
+      "person.first_name\nperson.full_name\ncase.start_date\nmanager.name",
+    description: template?.description ?? "",
+    recipientSource: template?.recipientSource ?? "personal_email",
   });
   const set = (key: keyof typeof form) => (event: { target: { value: string } }) =>
     setForm((current) => ({ ...current, [key]: event.target.value }));
@@ -208,7 +233,12 @@ function TemplateModal({
           status: form.status,
           subject: form.subject.trim(),
           body: form.body,
-          variables: form.variables.split(/[\n,]/).map((v) => v.trim()).filter(Boolean),
+          variables: form.variables
+            .split(/[\n,]/)
+            .map((v) => v.trim())
+            .filter(Boolean),
+          description: form.description || undefined,
+          recipientSource: form.recipientSource as "personal_email" | "company_email" | "manual",
         },
       });
       if ("error" in res) {
@@ -236,7 +266,13 @@ function TemplateModal({
         <div className="userform two compact">
           <label>
             {t("Category")}
-            <input list="template-categories" value={form.category} onChange={set("category")} required maxLength={80} />
+            <input
+              list="template-categories"
+              value={form.category}
+              onChange={set("category")}
+              required
+              maxLength={80}
+            />
             <datalist id="template-categories">
               {categories.map((cat) => (
                 <option key={cat} value={cat} />
@@ -252,13 +288,67 @@ function TemplateModal({
           </label>
         </div>
         <label>
+          {t("Description")}
+          <textarea
+            value={form.description}
+            onChange={set("description")}
+            rows={2}
+            maxLength={1000}
+          />
+        </label>
+        <label>
+          {t("Default recipient source")}
+          <select value={form.recipientSource} onChange={set("recipientSource")}>
+            <option value="personal_email">{t("Personal Email")}</option>
+            <option value="company_email">{t("Company Email")}</option>
+            <option value="manual">{t("Manual recipient")}</option>
+          </select>
+        </label>
+        <label>
           {t("Subject")}
           <input value={form.subject} onChange={set("subject")} required maxLength={300} />
         </label>
         <label>
           {t("Variables")}
-          <textarea value={form.variables} onChange={set("variables")} rows={4} placeholder="person.first_name" />
+          <textarea
+            value={form.variables}
+            onChange={set("variables")}
+            rows={4}
+            placeholder="person.first_name"
+          />
         </label>
+        <div className="chips">
+          {[
+            "employee_name",
+            "employee_id",
+            "personal_email",
+            "start_date",
+            "contract_end_date",
+            "last_working_day",
+            "supervisor_name",
+            "team",
+            "employment_type",
+            "workplace",
+            "manual.additional_information",
+          ].map((v) => (
+            <button
+              type="button"
+              className="variable"
+              key={v}
+              onClick={() =>
+                setForm((f) => ({
+                  ...f,
+                  variables: [...new Set([...f.variables.split(/\n/).filter(Boolean), v])].join(
+                    "\n",
+                  ),
+                  body: `${f.body}{{${v}}}`,
+                }))
+              }
+            >
+              {t("Insert Variable")} {`{{${v}}}`}
+            </button>
+          ))}
+        </div>
         <label>
           {t("Body")}
           <textarea value={form.body} onChange={set("body")} rows={12} required maxLength={20000} />

@@ -26,7 +26,10 @@ export const Route = createFileRoute("/_authenticated/cases/$caseId")({
   head: () => ({
     meta: [
       { title: "Case Detail · Team Workbench" },
-      { name: "description", content: "Case overview, checklist, communication, files and history." },
+      {
+        name: "description",
+        content: "Case overview, checklist, communication, files and history.",
+      },
     ],
   }),
   component: CaseDetailPage,
@@ -68,8 +71,20 @@ function CaseDetailPage() {
   const wb: WorkbenchData | null = wbData && !("error" in wbData) ? wbData : null;
   const refresh = () => qc.invalidateQueries({ queryKey: ["case", caseId] });
   const completedTasks = detail.tasks.filter((x) => x.status.toLowerCase() === "completed").length;
-  const taskProgress = detail.tasks.length ? Math.round(completedTasks / detail.tasks.length * 100) : 0;
+  const taskProgress = detail.tasks.length
+    ? Math.round((completedTasks / detail.tasks.length) * 100)
+    : 0;
   const changeConfirmation = async (confirmed: boolean) => {
+    const message = confirmed
+      ? c.caseType === "Onboarding"
+        ? t(
+            "The person will become Active and appear in Active People. This onboarding case and all open tasks will remain.",
+          )
+        : t(
+            "The person will immediately leave Active People. Person history, this case and post-leaving tasks will remain.",
+          )
+      : t("This reopens the lifecycle confirmation for correction. History remains available.");
+    if (!window.confirm(message)) return;
     try {
       const res = await setConfirmation({ data: { caseId, confirmed } });
       if ("error" in res) {
@@ -81,8 +96,18 @@ function CaseDetailPage() {
         qc.invalidateQueries({ queryKey: ["workbench"] }),
         qc.invalidateQueries({ queryKey: ["active-roster"] }),
       ]);
-      toast.success(t(confirmed ? (c.caseType === "Onboarding" ? "Onboarding confirmed" : "Offboarding confirmed") : "Case reopened"));
-    } catch { toast.error(t("Something went wrong. Please try again.")); }
+      toast.success(
+        t(
+          confirmed
+            ? c.caseType === "Onboarding"
+              ? "Joined confirmed"
+              : "Left confirmed"
+            : "Case reopened",
+        ),
+      );
+    } catch {
+      toast.error(t("Something went wrong. Please try again."));
+    }
   };
 
   return (
@@ -111,10 +136,30 @@ function CaseDetailPage() {
           <Badge>{c.status}</Badge>
           <Badge>{c.priority}</Badge>
           <Badge>{c.accessLevel}</Badge>
-          {c.caseType === "Onboarding" ? <span className="caseprogress"><b>{taskProgress}%</b><i><em style={{width:`${taskProgress}%`}} /></i><small>{completedTasks}/{detail.tasks.length} {t("tasks completed")}</small></span> : null}
+          {c.caseType === "Onboarding" ? (
+            <span className="caseprogress">
+              <b>{taskProgress}%</b>
+              <i>
+                <em style={{ width: `${taskProgress}%` }} />
+              </i>
+              <small>
+                {completedTasks}/{detail.tasks.length} {t("tasks completed")}
+              </small>
+            </span>
+          ) : null}
           {canEdit ? (
-            <button className={c.status === "Confirmed" ? "secondary" : "primary"} onClick={() => changeConfirmation(c.status !== "Confirmed")}>
-              <Icon name={c.status === "Confirmed" ? "history" : "check"} /> {t(c.status === "Confirmed" ? "Reopen" : c.caseType === "Onboarding" ? "Confirm Onboarding" : "Confirm Offboarding")}
+            <button
+              className={c.joinedAt || c.leftAt ? "secondary" : "primary"}
+              onClick={() => changeConfirmation(!(c.joinedAt || c.leftAt))}
+            >
+              <Icon name={c.joinedAt || c.leftAt ? "history" : "check"} />{" "}
+              {t(
+                c.joinedAt || c.leftAt
+                  ? "Reopen confirmation"
+                  : c.caseType === "Onboarding"
+                    ? "Confirm Joined"
+                    : "Confirm Left",
+              )}
             </button>
           ) : null}
           {isOwner ? (
@@ -135,93 +180,345 @@ function CaseDetailPage() {
 
       {tab === "Overview" ? <OverviewTab detail={detail} /> : null}
       {tab === "Tasks" ? <TasksTab detail={detail} canEdit={canEdit} refresh={refresh} /> : null}
-      {tab === "Workflow" ? <WorkflowTab detail={detail} canEdit={canEdit} refresh={refresh} /> : null}
+      {tab === "Workflow" ? (
+        <WorkflowTab detail={detail} canEdit={canEdit} refresh={refresh} />
+      ) : null}
       {tab === "Checklist" ? (
         <ChecklistTab detail={detail} canEdit={canEdit} refresh={refresh} caseId={caseId} />
       ) : null}
       {tab === "Communication" ? <CommunicationTab detail={detail} caseId={caseId} /> : null}
-      {tab === "Files" ? <FilesTab detail={detail} canEdit={canEdit} refresh={refresh} caseId={caseId} /> : null}
+      {tab === "Files" ? (
+        <FilesTab detail={detail} canEdit={canEdit} refresh={refresh} caseId={caseId} />
+      ) : null}
       {tab === "History" ? <HistoryTab detail={detail} /> : null}
 
       {shareOpen && wb ? (
-        <ShareModal detail={detail} wb={wb} caseId={caseId} close={() => setShareOpen(false)} refresh={refresh} />
+        <ShareModal
+          detail={detail}
+          wb={wb}
+          caseId={caseId}
+          close={() => setShareOpen(false)}
+          refresh={refresh}
+        />
       ) : null}
     </div>
   );
 }
 
-function TasksTab({detail,canEdit,refresh}:{detail:CaseDetailDto;canEdit:boolean;refresh:()=>void}){
-  const {t,lang}=useLang();const navigate=useNavigate();const toggle=useServerFn(toggleTaskFn);const qc=useQueryClient();
-  const update=async(taskId:string,complete:boolean)=>{try{const res=await toggle({data:{taskId,complete}});if("error" in res){toast.error(opErrorMessage(t,res.error));return}await Promise.all([qc.invalidateQueries({queryKey:["workbench"]}),refresh()])}catch{toast.error(t("Something went wrong. Please try again."))}};
-  if(!detail.tasks.length)return <Empty icon="check" title={t("No tasks yet.")}/>;
-  return <div className="panel"><div className="panelhead"><div><b>{t("Case Tasks")}</b><p>{t("Tasks are generated automatically from the onboarding case.")}</p></div><Badge>{`${detail.tasks.filter(x=>x.status.toLowerCase()==="completed").length}/${detail.tasks.length}`}</Badge></div><div className="casetasks">{detail.tasks.map(task=>{const done=task.status.toLowerCase()==="completed";const welcome=task.defaultTaskKey==="send_welcome_email"||task.title.toLowerCase().includes("welcome email");return <div className={`casetask ${done?"done":""}`} key={task.id}><button className={`taskcheck${done?" done":""}`} disabled={!canEdit} onClick={()=>update(task.id,!done)}><Icon name="check"/></button><div className="taskmain"><b>{t(task.title)}</b><span>{task.assigneeRole?`${t("Assigned role")}: ${t(task.assigneeRole)}`:""}{task.due?` · ${t("due")} ${fmtDate(task.due,lang)}`:""}</span></div><Badge>{task.status}</Badge>{welcome&&!done?<button className="primary emailtaskbutton" onClick={()=>navigate({to:"/email",search:{caseId:detail.case.id,taskId:task.id}})}><Icon name="mail"/>{t("Go send email")}</button>:null}</div>})}</div></div>;
+function TasksTab({
+  detail,
+  canEdit,
+  refresh,
+}: {
+  detail: CaseDetailDto;
+  canEdit: boolean;
+  refresh: () => void;
+}) {
+  const { t, lang } = useLang();
+  const navigate = useNavigate();
+  const toggle = useServerFn(toggleTaskFn);
+  const qc = useQueryClient();
+  const update = async (taskId: string, complete: boolean) => {
+    try {
+      const res = await toggle({ data: { taskId, complete } });
+      if ("error" in res) {
+        toast.error(opErrorMessage(t, res.error));
+        return;
+      }
+      await Promise.all([qc.invalidateQueries({ queryKey: ["workbench"] }), refresh()]);
+    } catch {
+      toast.error(t("Something went wrong. Please try again."));
+    }
+  };
+  if (!detail.tasks.length) return <Empty icon="check" title={t("No tasks yet.")} />;
+  return (
+    <div className="panel">
+      <div className="panelhead">
+        <div>
+          <b>{t("Case Tasks")}</b>
+          <p>{t("Tasks are generated automatically from the onboarding case.")}</p>
+        </div>
+        <Badge>{`${detail.tasks.filter((x) => x.status.toLowerCase() === "completed").length}/${detail.tasks.length}`}</Badge>
+      </div>
+      <div className="casetasks">
+        {detail.tasks.map((task) => {
+          const done = task.status.toLowerCase() === "completed";
+          const welcome =
+            task.defaultTaskKey === "send_welcome_email" ||
+            task.title.toLowerCase().includes("welcome email");
+          return (
+            <div className={`casetask ${done ? "done" : ""}`} key={task.id}>
+              <button
+                className={`taskcheck${done ? " done" : ""}`}
+                disabled={!canEdit}
+                onClick={() => update(task.id, !done)}
+              >
+                <Icon name="check" />
+              </button>
+              <div className="taskmain">
+                <b>{t(task.title)}</b>
+                <span>
+                  {task.assigneeRole ? `${t("Assigned role")}: ${t(task.assigneeRole)}` : ""}
+                  {task.due ? ` · ${t("due")} ${fmtDate(task.due, lang)}` : ""}
+                </span>
+              </div>
+              <Badge>{task.status}</Badge>
+              {welcome && !done ? (
+                <button
+                  className="primary emailtaskbutton"
+                  onClick={() =>
+                    navigate({ to: "/email", search: { caseId: detail.case.id, taskId: task.id } })
+                  }
+                >
+                  <Icon name="mail" />
+                  {t("Go send email")}
+                </button>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
-function WorkflowTab({ detail, canEdit, refresh }: { detail: CaseDetailDto; canEdit: boolean; refresh: () => void }) {
+function WorkflowTab({
+  detail,
+  canEdit,
+  refresh,
+}: {
+  detail: CaseDetailDto;
+  canEdit: boolean;
+  refresh: () => void;
+}) {
   const { t, lang } = useLang();
   const update = useServerFn(updateWorkflowItemFn);
   const [requestItem, setRequestItem] = useState<CaseDetailDto["workflow"][number] | null>(null);
-  const done = detail.workflow.filter((x) => x.status === "Completed" || x.status === "Not Required").length;
-  const setStatus = async (itemId: string, status: "Not Started" | "In Progress" | "Blocked" | "Completed" | "Not Required") => {
+  const done = detail.workflow.filter(
+    (x) => x.status === "Completed" || x.status === "Not Required",
+  ).length;
+  const setStatus = async (
+    itemId: string,
+    status: "Not Started" | "In Progress" | "Blocked" | "Completed" | "Not Required",
+  ) => {
     try {
       const res = await update({ data: { itemId, status } });
-      if ("error" in res) { toast.error(opErrorMessage(t, res.error)); return; }
+      if ("error" in res) {
+        toast.error(opErrorMessage(t, res.error));
+        return;
+      }
       refresh();
-    } catch { toast.error(t("Something went wrong. Please try again.")); }
+    } catch {
+      toast.error(t("Something went wrong. Please try again."));
+    }
   };
-  return <>
-    <div className="panel workflowpanel">
-      <div className="panelhead"><div><b>{t("Onboarding workflow")}</b><p>{done} / {detail.workflow.length} {t("steps complete")}</p></div><Badge>{`${Math.round(done / Math.max(detail.workflow.length, 1) * 100)}%`}</Badge></div>
-      <div className="workflowline">{detail.workflow.map((item, index) => {
-        const requests = detail.externalRequests.filter((x) => x.workflowItemId === item.id);
-        return <div className={`workflowstep ${item.status.toLowerCase().replaceAll(" ", "-")}`} key={item.id}>
-          <span className="workflowdot">{item.status === "Completed" ? "✓" : index + 1}</span>
-          <div className="workflowbody">
-            <div><b>{t(item.title)}</b><Badge>{item.status}</Badge></div>
-            {item.description ? <p>{t(item.description)}</p> : null}
-            <small>{item.targetDate ? `${t("Target")} ${fmtDate(item.targetDate, lang)}` : t("No target date")}{item.completedByName ? ` · ${t("Completed by")} ${item.completedByName}` : ""}</small>
-            {requests.map((x) => <div className="externalrequest" key={x.id}><Icon name="mail" /><span><b>{x.recipientTeam || x.recipientName || x.recipientEmail}</b><small>{x.recipientEmail}{x.respondedAt ? ` · ${fmtDateTime(x.respondedAt, lang)}` : ""}</small>{x.responseNote ? <em>{x.responseNote}</em> : null}</span><Badge>{x.status}</Badge></div>)}
-            {canEdit && item.status !== "Not Required" ? <div className="workflowactions"><select value={item.status} onChange={(e) => setStatus(item.id, e.target.value as "Not Started" | "In Progress" | "Blocked" | "Completed")}><option>Not Started</option><option>In Progress</option><option>Blocked</option><option>Completed</option></select><button className="secondary" onClick={() => setRequestItem(item)}><Icon name="send" /> {t("Request external update")}</button></div> : null}
+  return (
+    <>
+      <div className="panel workflowpanel">
+        <div className="panelhead">
+          <div>
+            <b>{t("Onboarding workflow")}</b>
+            <p>
+              {done} / {detail.workflow.length} {t("steps complete")}
+            </p>
           </div>
-        </div>;
-      })}</div>
-    </div>
-    {requestItem ? <ExternalRequestModal item={requestItem} personName={detail.case.name} close={() => setRequestItem(null)} refresh={refresh} /> : null}
-  </>;
+          <Badge>{`${Math.round((done / Math.max(detail.workflow.length, 1)) * 100)}%`}</Badge>
+        </div>
+        <div className="workflowline">
+          {detail.workflow.map((item, index) => {
+            const requests = detail.externalRequests.filter((x) => x.workflowItemId === item.id);
+            return (
+              <div
+                className={`workflowstep ${item.status.toLowerCase().replaceAll(" ", "-")}`}
+                key={item.id}
+              >
+                <span className="workflowdot">{item.status === "Completed" ? "✓" : index + 1}</span>
+                <div className="workflowbody">
+                  <div>
+                    <b>{t(item.title)}</b>
+                    <Badge>{item.status}</Badge>
+                  </div>
+                  {item.description ? <p>{t(item.description)}</p> : null}
+                  <small>
+                    {item.targetDate
+                      ? `${t("Target")} ${fmtDate(item.targetDate, lang)}`
+                      : t("No target date")}
+                    {item.completedByName ? ` · ${t("Completed by")} ${item.completedByName}` : ""}
+                  </small>
+                  {requests.map((x) => (
+                    <div className="externalrequest" key={x.id}>
+                      <Icon name="mail" />
+                      <span>
+                        <b>{x.recipientTeam || x.recipientName || x.recipientEmail}</b>
+                        <small>
+                          {x.recipientEmail}
+                          {x.respondedAt ? ` · ${fmtDateTime(x.respondedAt, lang)}` : ""}
+                        </small>
+                        {x.responseNote ? <em>{x.responseNote}</em> : null}
+                      </span>
+                      <Badge>{x.status}</Badge>
+                    </div>
+                  ))}
+                  {canEdit && item.status !== "Not Required" ? (
+                    <div className="workflowactions">
+                      <select
+                        value={item.status}
+                        onChange={(e) =>
+                          setStatus(
+                            item.id,
+                            e.target.value as
+                              "Not Started" | "In Progress" | "Blocked" | "Completed",
+                          )
+                        }
+                      >
+                        <option>Not Started</option>
+                        <option>In Progress</option>
+                        <option>Blocked</option>
+                        <option>Completed</option>
+                      </select>
+                      <button className="secondary" onClick={() => setRequestItem(item)}>
+                        <Icon name="send" /> {t("Request external update")}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      {requestItem ? (
+        <ExternalRequestModal
+          item={requestItem}
+          personName={detail.case.name}
+          close={() => setRequestItem(null)}
+          refresh={refresh}
+        />
+      ) : null}
+    </>
+  );
 }
 
-function ExternalRequestModal({ item, personName, close, refresh }: { item: CaseDetailDto["workflow"][number]; personName: string; close: () => void; refresh: () => void }) {
+function ExternalRequestModal({
+  item,
+  personName,
+  close,
+  refresh,
+}: {
+  item: CaseDetailDto["workflow"][number];
+  personName: string;
+  close: () => void;
+  refresh: () => void;
+}) {
   const { t, lang } = useLang();
   const createRequest = useServerFn(createExternalRequestFn);
-  const [form, setForm] = useState({ recipientEmail: "", recipientName: "", recipientTeam: "", dueDate: item.targetDate ?? "", requestMessage: "" });
+  const [form, setForm] = useState({
+    recipientEmail: "",
+    recipientName: "",
+    recipientTeam: "",
+    dueDate: item.targetDate ?? "",
+    requestMessage: "",
+  });
   const [busy, setBusy] = useState(false);
   const submit = async () => {
     if (!form.recipientEmail) return;
     setBusy(true);
     try {
       const res = await createRequest({ data: { workflowItemId: item.id, ...form } });
-      if ("error" in res) { toast.error(opErrorMessage(t, res.error)); return; }
+      if ("error" in res) {
+        toast.error(opErrorMessage(t, res.error));
+        return;
+      }
       const link = `${window.location.origin}/respond/${res.token}`;
       const subject = `${t("Action required")}: ${t(item.title)} · ${personName}`;
-      const greeting = form.recipientName ? `${t("Hello")} ${form.recipientName},` : `${t("Hello")},`;
-      const body = lang === "zh"
-        ? `${greeting}\n\n请协助处理以下事项：${t(item.title)}（${personName}）。${form.requestMessage ? `\n\n${form.requestMessage}` : ""}${form.dueDate ? `\n\n截止日期：${fmtDate(form.dueDate, lang)}` : ""}\n\n无需登录，请通过以下安全链接反馈进度：\n${link}\n\n谢谢。`
-        : `${greeting}\n\nPlease help with the following task: ${item.title} for ${personName}.${form.requestMessage ? `\n\n${form.requestMessage}` : ""}${form.dueDate ? `\n\nDue: ${fmtDate(form.dueDate, lang)}` : ""}\n\nNo account is required. Please update the progress using this secure link:\n${link}\n\nThank you.`;
+      const greeting = form.recipientName
+        ? `${t("Hello")} ${form.recipientName},`
+        : `${t("Hello")},`;
+      const body =
+        lang === "zh"
+          ? `${greeting}\n\n请协助处理以下事项：${t(item.title)}（${personName}）。${form.requestMessage ? `\n\n${form.requestMessage}` : ""}${form.dueDate ? `\n\n截止日期：${fmtDate(form.dueDate, lang)}` : ""}\n\n无需登录，请通过以下安全链接反馈进度：\n${link}\n\n谢谢。`
+          : `${greeting}\n\nPlease help with the following task: ${item.title} for ${personName}.${form.requestMessage ? `\n\n${form.requestMessage}` : ""}${form.dueDate ? `\n\nDue: ${fmtDate(form.dueDate, lang)}` : ""}\n\nNo account is required. Please update the progress using this secure link:\n${link}\n\nThank you.`;
       await navigator.clipboard?.writeText(link).catch(() => undefined);
-      refresh(); close();
+      refresh();
+      close();
       window.location.href = `mailto:${encodeURIComponent(form.recipientEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
       toast.success(t("Feedback link created and copied"));
-    } catch { toast.error(t("Something went wrong. Please try again.")); }
-    finally { setBusy(false); }
+    } catch {
+      toast.error(t("Something went wrong. Please try again."));
+    } finally {
+      setBusy(false);
+    }
   };
-  return <Modal title={t("Request external update")} close={close}>
-    <div className="externalform"><div className="requestsummary"><Icon name="send" /><div><b>{t(item.title)}</b><span>{personName}</span></div></div>
-      <div className="userform two"><label><span>{t("Recipient Email")}</span><input type="email" required value={form.recipientEmail} onChange={e=>setForm({...form,recipientEmail:e.target.value})}/></label><label><span>{t("Recipient Name")}</span><input value={form.recipientName} onChange={e=>setForm({...form,recipientName:e.target.value})}/></label><label><span>{t("Recipient Team")}</span><input placeholder="IT / Administration / Reception" value={form.recipientTeam} onChange={e=>setForm({...form,recipientTeam:e.target.value})}/></label><label><span>{t("Due Date")}</span><input type="date" value={form.dueDate} onChange={e=>setForm({...form,dueDate:e.target.value})}/></label></div>
-      <label className="sharefield"><span>{t("Message")}</span><textarea rows={4} maxLength={1000} value={form.requestMessage} onChange={e=>setForm({...form,requestMessage:e.target.value})}/></label>
-      <p className="securityhint"><Icon name="lock" /> {t("The recipient will receive a private feedback link and will not need a Team Workbench account.")}</p>
-      <div className="modalactions"><button className="secondary" onClick={close}>{t("Cancel")}</button><button className="primary" disabled={busy || !form.recipientEmail} onClick={submit}><Icon name="send" /> {busy?t("Creating…"):t("Create & Open Outlook")}</button></div>
-    </div>
-  </Modal>;
+  return (
+    <Modal title={t("Request external update")} close={close}>
+      <div className="externalform">
+        <div className="requestsummary">
+          <Icon name="send" />
+          <div>
+            <b>{t(item.title)}</b>
+            <span>{personName}</span>
+          </div>
+        </div>
+        <div className="userform two">
+          <label>
+            <span>{t("Recipient Email")}</span>
+            <input
+              type="email"
+              required
+              value={form.recipientEmail}
+              onChange={(e) => setForm({ ...form, recipientEmail: e.target.value })}
+            />
+          </label>
+          <label>
+            <span>{t("Recipient Name")}</span>
+            <input
+              value={form.recipientName}
+              onChange={(e) => setForm({ ...form, recipientName: e.target.value })}
+            />
+          </label>
+          <label>
+            <span>{t("Recipient Team")}</span>
+            <input
+              placeholder="IT / Administration / Reception"
+              value={form.recipientTeam}
+              onChange={(e) => setForm({ ...form, recipientTeam: e.target.value })}
+            />
+          </label>
+          <label>
+            <span>{t("Due Date")}</span>
+            <input
+              type="date"
+              value={form.dueDate}
+              onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
+            />
+          </label>
+        </div>
+        <label className="sharefield">
+          <span>{t("Message")}</span>
+          <textarea
+            rows={4}
+            maxLength={1000}
+            value={form.requestMessage}
+            onChange={(e) => setForm({ ...form, requestMessage: e.target.value })}
+          />
+        </label>
+        <p className="securityhint">
+          <Icon name="lock" />{" "}
+          {t(
+            "The recipient will receive a private feedback link and will not need a Team Workbench account.",
+          )}
+        </p>
+        <div className="modalactions">
+          <button className="secondary" onClick={close}>
+            {t("Cancel")}
+          </button>
+          <button className="primary" disabled={busy || !form.recipientEmail} onClick={submit}>
+            <Icon name="send" /> {busy ? t("Creating…") : t("Create & Open Outlook")}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
 }
 
 function Field({ label, value }: { label: string; value: string | null | undefined }) {
@@ -272,10 +569,20 @@ function OverviewTab({ detail }: { detail: CaseDetailDto }) {
       <div className="detailcard">
         <b>{c.notes !== null ? t("Notes") : t("Notes (restricted)")}</b>
         {c.notes !== null ? (
-          <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--ink-sub)", whiteSpace: "pre-wrap" }}>{c.notes}</p>
+          <p
+            style={{
+              margin: "4px 0 0",
+              fontSize: 12,
+              color: "var(--ink-sub)",
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {c.notes}
+          </p>
         ) : (
           <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--ink-sub)" }}>
-            <Icon name="lock" /> {t("Restricted field: visible to case owners and collaborators only.")}
+            <Icon name="lock" />{" "}
+            {t("Restricted field: visible to case owners and collaborators only.")}
           </p>
         )}
       </div>
@@ -354,10 +661,16 @@ function ChecklistTab({
                       <Icon name="check" />
                     </button>
                     <div className="taskmain">
-                      <b style={done ? { textDecoration: "line-through", opacity: 0.6 } : undefined}>{item.title}</b>
+                      <b
+                        style={done ? { textDecoration: "line-through", opacity: 0.6 } : undefined}
+                      >
+                        {item.title}
+                      </b>
                       <span>
                         {item.dueDate ? `${t("due")} ${fmtDate(item.dueDate, lang)}` : ""}
-                        {item.completedByName ? ` · ${t("Completed by")} ${item.completedByName}` : ""}
+                        {item.completedByName
+                          ? ` · ${t("Completed by")} ${item.completedByName}`
+                          : ""}
                       </span>
                     </div>
                     {canEdit ? (
@@ -396,7 +709,10 @@ function CommunicationTab({ detail, caseId }: { detail: CaseDetailDto; caseId: s
     <div className="panel">
       <div className="panelhead">
         <b>{t("Communication")}</b>
-        <button className="primary" onClick={() => navigate({ to: "/email", search: { caseId, taskId: "" } })}>
+        <button
+          className="primary"
+          onClick={() => navigate({ to: "/email", search: { caseId, taskId: "" } })}
+        >
           <Icon name="mail" /> {t("Compose Email")}
         </button>
       </div>
@@ -475,14 +791,24 @@ function FilesTab({
     const f = detail.files.find((x) => x.id === fileId);
     if (!f) return;
     void filename;
-    const { data: row } = await supabase.from("case_files").select("storage_path").eq("id", fileId).maybeSingle();
+    const { data: row } = await supabase
+      .from("case_files")
+      .select("storage_path")
+      .eq("id", fileId)
+      .maybeSingle();
     if (!row) return;
-    const { data: signed } = await supabase.storage.from("case-files").createSignedUrl(row.storage_path, 60);
+    const { data: signed } = await supabase.storage
+      .from("case-files")
+      .createSignedUrl(row.storage_path, 60);
     if (signed?.signedUrl) window.open(signed.signedUrl, "_blank", "noopener");
   };
 
   const remove = async (fileId: string) => {
-    const { data: row } = await supabase.from("case_files").select("storage_path").eq("id", fileId).maybeSingle();
+    const { data: row } = await supabase
+      .from("case_files")
+      .select("storage_path")
+      .eq("id", fileId)
+      .maybeSingle();
     if (!row) return;
     await supabase.storage.from("case-files").remove([row.storage_path]);
     await supabase.from("case_files").delete().eq("id", fileId);
@@ -647,7 +973,10 @@ function ShareModal({
             <b>{t("Viewer")}</b>
             <span>{t("Can view case details")}</span>
           </button>
-          <button className={level === "collaborator" ? "active" : ""} onClick={() => setLevel("collaborator")}>
+          <button
+            className={level === "collaborator" ? "active" : ""}
+            onClick={() => setLevel("collaborator")}
+          >
             <b>{t("Collaborator")}</b>
             <span>{t("Can edit tasks and upload files")}</span>
           </button>

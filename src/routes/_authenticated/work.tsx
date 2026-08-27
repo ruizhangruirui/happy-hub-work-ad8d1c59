@@ -3,19 +3,23 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { getWorkbenchDataFn, toggleTaskFn } from "@/lib/workbench.functions";
+import { getActiveRosterFn, getWorkbenchDataFn, toggleTaskFn } from "@/lib/workbench.functions";
 import type { WorkbenchData } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
 import { opErrorMessage } from "@/lib/errors";
 import { fmtDate, greetingFor, initialsOf } from "@/lib/format";
 import { businessDate, taskDateBuckets } from "@/lib/domain";
 import { Badge, Empty, Icon, Loading } from "@/components/workbench/ui";
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 export const Route = createFileRoute("/_authenticated/work")({
   head: () => ({
     meta: [
       { title: "My Work · Team Workbench" },
-      { name: "description", content: "Your tasks, upcoming onboarding and shared cases at a glance." },
+      {
+        name: "description",
+        content: "Your tasks, upcoming onboarding and shared cases at a glance.",
+      },
     ],
   }),
   component: WorkPage,
@@ -31,6 +35,11 @@ export function WorkPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { data, isLoading, isError } = useWorkbench();
+  const fetchRoster = useServerFn(getActiveRosterFn);
+  const { data: rosterData } = useQuery({
+    queryKey: ["active-roster"],
+    queryFn: () => fetchRoster(),
+  });
   const callToggle = useServerFn(toggleTaskFn);
   const [quickOpen, setQuickOpen] = useState(false);
 
@@ -38,9 +47,11 @@ export function WorkPage() {
     if (!data || "error" in data) return null;
     const open = data.tasks.filter((x) => x.status !== "Completed" && x.status !== "Cancelled");
     const today = businessDate();
-    const {overdue,dueSoon}=taskDateBuckets(open,today);
+    const { overdue, dueSoon } = taskDateBuckets(open, today);
     const waiting = open.filter((x) => x.status === "Waiting" || x.status === "Blocked");
-    const completedToday = data.tasks.filter((x) => x.status === "Completed" && x.completedAt?.slice(0, 10) === today);
+    const completedToday = data.tasks.filter(
+      (x) => x.status === "Completed" && x.completedAt?.slice(0, 10) === today,
+    );
     const upcoming = data.cases
       .filter((c) => c.caseType === "Onboarding" && c.startDate >= today)
       .sort((a, b) => a.startDate.localeCompare(b.startDate))
@@ -53,6 +64,36 @@ export function WorkPage() {
     return <Empty icon="alert" title={t("Something went wrong. Please try again.")} />;
   }
   const wb = data as WorkbenchData;
+  const roster = Array.isArray(rosterData) ? rosterData : [];
+  const year = businessDate().slice(0, 4);
+  const peopleMetrics = {
+    active: roster.length,
+    preboarding: wb.cases.filter(
+      (c) => c.caseType === "Onboarding" && !c.joinedAt && c.status !== "Cancelled",
+    ).length,
+    leaving: roster.filter((x) => x.leaving).length,
+    joinedYtd: wb.cases.filter((c) => c.joinedDate?.startsWith(year)).length,
+    leftYtd: wb.cases.filter((c) => c.leftDate?.startsWith(year)).length,
+  };
+  const leavers = wb.cases
+    .filter((c) => c.caseType === "Offboarding" && !c.leftAt && c.status !== "Cancelled")
+    .sort((a, b) =>
+      String(a.lastWorkingDay ?? "9999").localeCompare(String(b.lastWorkingDay ?? "9999")),
+    )
+    .slice(0, 5);
+  const attention = wb.cases
+    .filter(
+      (c) =>
+        (!c.joinedAt &&
+          c.caseType === "Onboarding" &&
+          derived.open.some((t) => t.caseId === c.id && t.due && t.due < businessDate())) ||
+        (c.caseType === "Offboarding" && !c.leftAt && !c.lastWorkingDay),
+    )
+    .slice(0, 6);
+  const group = (values: string[]) =>
+    [...new Set(values)].map((name) => ({ name, value: values.filter((x) => x === name).length }));
+  const byType = group(roster.map((x) => x.employmentType));
+  const byTeam = group(roster.map((x) => x.team));
 
   const onToggle = async (taskId: string, complete: boolean) => {
     try {
@@ -93,15 +134,22 @@ export function WorkPage() {
           </button>
           {quickOpen ? (
             <div className="quickmenu">
-              <button
-                onClick={() => navigate({ to: "/onboarding", search: { q: "", new: "1" } })}
-              >
+              <button onClick={() => navigate({ to: "/onboarding", search: { q: "", new: "1" } })}>
                 <Icon name="onboarding" /> {t("New Onboarding")}
               </button>
-              <button onClick={() => navigate({ to: "/offboarding", search: { q: "", new: "1", personId: "", employmentId: "" } })}>
+              <button
+                onClick={() =>
+                  navigate({
+                    to: "/offboarding",
+                    search: { q: "", new: "1", personId: "", employmentId: "" },
+                  })
+                }
+              >
                 <Icon name="offboarding" /> {t("New Offboarding")}
               </button>
-              <button onClick={() => navigate({ to: "/email", search: { caseId: "", taskId: "" } })}>
+              <button
+                onClick={() => navigate({ to: "/email", search: { caseId: "", taskId: "" } })}
+              >
                 <Icon name="mail" /> {t("Compose Email")}
               </button>
             </div>
@@ -152,6 +200,63 @@ export function WorkPage() {
         </div>
       </div>
 
+      <div className="rosterstats">
+        <div className="statcard">
+          <span>{t("Active People")}</span>
+          <strong>{peopleMetrics.active}</strong>
+        </div>
+        <div className="statcard">
+          <span>{t("Pre-boarding")}</span>
+          <strong>{peopleMetrics.preboarding}</strong>
+        </div>
+        <div className="statcard">
+          <span>{t("Leaving")}</span>
+          <strong>{peopleMetrics.leaving}</strong>
+        </div>
+        <div className="statcard">
+          <span>{t("Joined YTD")}</span>
+          <strong>{peopleMetrics.joinedYtd}</strong>
+        </div>
+        <div className="statcard">
+          <span>{t("Left YTD")}</span>
+          <strong>{peopleMetrics.leftYtd}</strong>
+        </div>
+      </div>
+      <div className="dashboard analyticsgrid">
+        <section className="panel">
+          <div className="panelhead">
+            <b>{t("Active People by Employment Type")}</b>
+          </div>
+          <div style={{ height: 220 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={byType}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis allowDecimals={false} />
+                <Tooltip />
+                <Bar dataKey="value" fill="#4968db" radius={[5, 5, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+        <section className="panel">
+          <div className="panelhead">
+            <b>{t("Active People by Team")}</b>
+          </div>
+          <div style={{ height: 220 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={byTeam}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis allowDecimals={false} />
+                <Tooltip />
+                <Bar dataKey="value" fill="#4f9b78" radius={[5, 5, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+      </div>
+
       <div className="dashboard">
         <section className="panel">
           <div className="panelhead">
@@ -188,7 +293,9 @@ export function WorkPage() {
                   {task.caseId ? (
                     <button
                       className="open"
-                      onClick={() => navigate({ to: "/cases/$caseId", params: { caseId: task.caseId! } })}
+                      onClick={() =>
+                        navigate({ to: "/cases/$caseId", params: { caseId: task.caseId! } })
+                      }
                       aria-label="Open case"
                     >
                       ›
@@ -204,7 +311,10 @@ export function WorkPage() {
           <section className="panel" style={{ marginBottom: 22 }}>
             <div className="panelhead">
               <b>{t("Upcoming Onboarding")}</b>
-              <button className="textbutton" onClick={() => navigate({ to: "/onboarding", search: { q: "", new: "" } })}>
+              <button
+                className="textbutton"
+                onClick={() => navigate({ to: "/onboarding", search: { q: "", new: "" } })}
+              >
                 {t("View All")}
               </button>
             </div>
@@ -228,6 +338,56 @@ export function WorkPage() {
                   </div>
                 ))}
               </div>
+            )}
+          </section>
+          <section className="panel" style={{ marginBottom: 22 }}>
+            <div className="panelhead">
+              <b>{t("Upcoming Leavers")}</b>
+            </div>
+            {leavers.length ? (
+              leavers.map((c) => (
+                <button
+                  className="event"
+                  key={c.id}
+                  onClick={() => navigate({ to: "/cases/$caseId", params: { caseId: c.id } })}
+                >
+                  <span>
+                    <b>{c.name}</b>
+                    <small>
+                      {c.team} · {fmtDate(c.lastWorkingDay, lang)}
+                    </small>
+                  </span>
+                  <Badge>{c.status}</Badge>
+                </button>
+              ))
+            ) : (
+              <div className="inlineempty">{t("No upcoming leavers.")}</div>
+            )}
+          </section>
+          <section className="panel">
+            <div className="panelhead">
+              <b>{t("Cases Requiring Attention")}</b>
+              <Badge>{String(attention.length)}</Badge>
+            </div>
+            {attention.length ? (
+              attention.map((c) => (
+                <button
+                  className="event"
+                  key={c.id}
+                  onClick={() => navigate({ to: "/cases/$caseId", params: { caseId: c.id } })}
+                >
+                  <span>
+                    <b>{c.name}</b>
+                    <small>
+                      {c.caseType === "Offboarding" && !c.lastWorkingDay
+                        ? t("Last Working Day not confirmed")
+                        : t("Mandatory task overdue")}
+                    </small>
+                  </span>
+                </button>
+              ))
+            ) : (
+              <div className="inlineempty">{t("No cases require attention.")}</div>
             )}
           </section>
 

@@ -10,7 +10,9 @@ export const getWorkbenchDataFn = createServerFn({ method: "GET" })
 export const getCaseDetailFn = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data) => z.object({ caseId: z.string().uuid() }).parse(data))
-  .handler(({ data, context }) => wb.getCaseDetail(context.supabase as wb.Db, context.userId, data.caseId));
+  .handler(({ data, context }) =>
+    wb.getCaseDetail(context.supabase as wb.Db, context.userId, data.caseId),
+  );
 
 export const shareCaseFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -28,7 +30,9 @@ export const shareCaseFn = createServerFn({ method: "POST" })
 export const removeMemberFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data) => z.object({ memberId: z.string().uuid() }).parse(data))
-  .handler(({ data, context }) => wb.removeMember(context.supabase as wb.Db, context.userId, data.memberId));
+  .handler(({ data, context }) =>
+    wb.removeMember(context.supabase as wb.Db, context.userId, data.memberId),
+  );
 
 export const assignTaskFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -54,45 +58,156 @@ export const createTaskFn = createServerFn({ method: "POST" })
 
 export const toggleTaskFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) => z.object({ taskId: z.string().uuid(), complete: z.boolean() }).parse(data))
+  .inputValidator((data) =>
+    z.object({ taskId: z.string().uuid(), complete: z.boolean() }).parse(data),
+  )
   .handler(({ data, context }) => wb.toggleTask(context.supabase as wb.Db, context.userId, data));
+
+export const setTaskStatusFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) =>
+    z
+      .object({
+        taskId: z.string().uuid(),
+        status: z.enum([
+          "Not Started",
+          "Open",
+          "In Progress",
+          "Waiting",
+          "Blocked",
+          "Completed",
+          "Not Applicable",
+        ]),
+        comment: z.string().max(2000).optional(),
+      })
+      .parse(data),
+  )
+  .handler(({ data, context }) =>
+    wb.setTaskStatus(context.supabase as wb.Db, context.userId, data),
+  );
 
 export const toggleChecklistFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) => z.object({ itemId: z.string().uuid(), complete: z.boolean() }).parse(data))
-  .handler(({ data, context }) => wb.toggleChecklist(context.supabase as wb.Db, context.userId, data));
+  .inputValidator((data) =>
+    z.object({ itemId: z.string().uuid(), complete: z.boolean() }).parse(data),
+  )
+  .handler(({ data, context }) =>
+    wb.toggleChecklist(context.supabase as wb.Db, context.userId, data),
+  );
 
-const onboardingInput = z.object({ personId:z.string().uuid().optional(), preferredName:z.string().max(60).optional(),employeeId:z.string().max(80).optional(), firstName:z.string().min(1).max(60),lastName:z.string().min(1).max(60),email:z.union([z.string().email(),z.literal("")]).optional(),teamId:z.string().uuid().nullable().optional(),caseType:z.literal("onboarding"),employmentType:z.enum(["Employee","Intern","Leased Labour"]),startDate:z.string().length(10),role:z.string().max(120).optional(),location:z.string().max(120).optional(),supervisorName:z.string().min(1).max(120),supervisorEmail:z.union([z.string().email(),z.literal("")]).optional(),priority:z.enum(["High","Medium","Low"]),notes:z.string().max(2000).optional(),visaRequired:z.boolean().optional()});
-export const createOnboardingCaseFn=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>onboardingInput.parse(d)).handler(({data,context})=>wb.createOnboardingCase(context.supabase as wb.Db,context.userId,data));
-export const createOffboardingCaseFn=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({personId:z.string().uuid(),employmentId:z.string().uuid(),lastWorkingDay:z.string().length(10),leavingType:z.string().max(80).optional(),leavingReason:z.string().max(500).optional(),priority:z.enum(["High","Medium","Low"]),notes:z.string().max(2000).optional()}).parse(d)).handler(({data,context})=>wb.createOffboardingCase(context.supabase as wb.Db,context.userId,data));
-export const getPeopleFn=createServerFn({method:"GET"}).middleware([requireSupabaseAuth]).handler(({context})=>wb.getPeople(context.supabase as wb.Db,context.userId));
-export const getPersonDetailFn=createServerFn({method:"GET"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({personId:z.string().uuid()}).parse(d)).handler(({data,context})=>wb.getPersonDetail(context.supabase as wb.Db,context.userId,data.personId));
-export const findOnboardingCandidatesFn=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({employeeId:z.string().max(80).optional(),email:z.string().max(320).optional(),fullName:z.string().max(140),teamId:z.string().uuid().nullable()}).parse(d)).handler(({data,context})=>wb.findOnboardingCandidates(context.supabase as wb.Db,context.userId,data));
+const onboardingInput = z.object({
+  personId: z.string().uuid().optional(),
+  preferredName: z.string().max(60).optional(),
+  employeeId: z.string().max(80).optional(),
+  firstName: z.string().min(1).max(60),
+  lastName: z.string().min(1).max(60),
+  email: z.union([z.string().email(), z.literal("")]).optional(),
+  teamId: z.string().uuid().nullable().optional(),
+  caseType: z.literal("onboarding"),
+  employmentType: z.enum(["Employee", "Intern", "Leased Labour"]),
+  startDate: z.string().length(10),
+  role: z.string().max(120).optional(),
+  location: z.string().max(120).optional(),
+  supervisorName: z.string().min(1).max(120),
+  supervisorEmail: z.union([z.string().email(), z.literal("")]).optional(),
+  priority: z.enum(["High", "Medium", "Low"]),
+  notes: z.string().max(2000).optional(),
+  visaRequired: z.boolean().optional(),
+});
+export const createOnboardingCaseFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => onboardingInput.parse(d))
+  .handler(({ data, context }) =>
+    wb.createOnboardingCase(context.supabase as wb.Db, context.userId, data),
+  );
+export const createOffboardingCaseFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        personId: z.string().uuid(),
+        employmentId: z.string().uuid(),
+        contractEndDate: z.string().length(10).optional(),
+        lastWorkingDay: z.string().length(10).optional(),
+        leavingType: z.string().max(80).optional(),
+        leavingReason: z.string().max(500).optional(),
+        priority: z.enum(["High", "Medium", "Low"]),
+        notes: z.string().max(2000).optional(),
+      })
+      .parse(d),
+  )
+  .handler(({ data, context }) =>
+    wb.createOffboardingCase(context.supabase as wb.Db, context.userId, data),
+  );
+export const getPeopleFn = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(({ context }) => wb.getPeople(context.supabase as wb.Db, context.userId));
+export const getPersonDetailFn = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ personId: z.string().uuid() }).parse(d))
+  .handler(({ data, context }) =>
+    wb.getPersonDetail(context.supabase as wb.Db, context.userId, data.personId),
+  );
+export const findOnboardingCandidatesFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        employeeId: z.string().max(80).optional(),
+        email: z.string().max(320).optional(),
+        fullName: z.string().max(140),
+        teamId: z.string().uuid().nullable(),
+      })
+      .parse(d),
+  )
+  .handler(({ data, context }) =>
+    wb.findOnboardingCandidates(context.supabase as wb.Db, context.userId, data),
+  );
 
 export const setCaseConfirmationFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) => z.object({ caseId: z.string().uuid(), confirmed: z.boolean() }).parse(data))
-  .handler(({ data, context }) => wb.setCaseConfirmation(context.supabase as wb.Db, context.userId, data.caseId, data.confirmed));
+  .inputValidator((data) =>
+    z.object({ caseId: z.string().uuid(), confirmed: z.boolean() }).parse(data),
+  )
+  .handler(({ data, context }) =>
+    wb.setCaseConfirmation(context.supabase as wb.Db, context.userId, data.caseId, data.confirmed),
+  );
 
 export const getActiveRosterFn = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(({ context }) => wb.getActiveRoster(context.supabase as wb.Db, context.userId));
 
-export const createExternalRequestFn = createServerFn({ method:"POST" })
+export const createExternalRequestFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data)=>z.object({
-    workflowItemId:z.string().uuid(),recipientEmail:z.string().email().max(320),recipientName:z.string().max(120).optional(),
-    recipientTeam:z.string().max(120).optional(),requestMessage:z.string().max(1000).optional(),dueDate:z.string().max(10).optional(),
-  }).parse(data))
-  .handler(({data,context})=>wb.createExternalRequest(context.supabase as wb.Db,context.userId,data));
+  .inputValidator((data) =>
+    z
+      .object({
+        workflowItemId: z.string().uuid(),
+        recipientEmail: z.string().email().max(320),
+        recipientName: z.string().max(120).optional(),
+        recipientTeam: z.string().max(120).optional(),
+        requestMessage: z.string().max(1000).optional(),
+        dueDate: z.string().max(10).optional(),
+      })
+      .parse(data),
+  )
+  .handler(({ data, context }) =>
+    wb.createExternalRequest(context.supabase as wb.Db, context.userId, data),
+  );
 
 export const updateWorkflowItemFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) => z.object({
-    itemId: z.string().uuid(),
-    status: z.enum(["Not Started", "In Progress", "Blocked", "Completed", "Not Required"]),
-  }).parse(data))
-  .handler(({ data, context }) => wb.updateWorkflowItem(context.supabase as wb.Db, context.userId, data));
+  .inputValidator((data) =>
+    z
+      .object({
+        itemId: z.string().uuid(),
+        status: z.enum(["Not Started", "In Progress", "Blocked", "Completed", "Not Required"]),
+      })
+      .parse(data),
+  )
+  .handler(({ data, context }) =>
+    wb.updateWorkflowItem(context.supabase as wb.Db, context.userId, data),
+  );
 
 export const saveUserFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -133,6 +248,8 @@ export const saveTemplateFn = createServerFn({ method: "POST" })
         subject: z.string().min(1).max(300),
         body: z.string().min(1).max(20000),
         variables: z.array(z.string().max(120)).max(50),
+        description: z.string().max(1000).optional(),
+        recipientSource: z.enum(["personal_email", "company_email", "manual"]).optional(),
       })
       .parse(data),
   )
@@ -151,22 +268,36 @@ export const saveEmailDraftFn = createServerFn({ method: "POST" })
       })
       .parse(data),
   )
-  .handler(({ data, context }) => wb.saveEmailDraft(context.supabase as wb.Db, context.userId, data));
+  .handler(({ data, context }) =>
+    wb.saveEmailDraft(context.supabase as wb.Db, context.userId, data),
+  );
 
-export const completeEmailTaskFn = createServerFn({ method:"POST" })
+export const completeEmailTaskFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data)=>z.object({
-    taskId:z.string().uuid(),caseId:z.string().uuid(),templateId:z.string().uuid(),
-    subject:z.string().min(1).max(300),body:z.string().max(20000),recipient:z.string().max(320),
-  }).parse(data))
-  .handler(({data,context})=>wb.completeEmailTask(context.supabase as wb.Db,context.userId,data));
+  .inputValidator((data) =>
+    z
+      .object({
+        taskId: z.string().uuid(),
+        caseId: z.string().uuid(),
+        templateId: z.string().uuid(),
+        subject: z.string().min(1).max(300),
+        body: z.string().max(20000),
+        recipient: z.string().max(320),
+      })
+      .parse(data),
+  )
+  .handler(({ data, context }) =>
+    wb.completeEmailTask(context.supabase as wb.Db, context.userId, data),
+  );
 
 export const assignChecklistOwnerFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data) =>
     z.object({ itemId: z.string().uuid(), ownerId: z.string().uuid().nullable() }).parse(data),
   )
-  .handler(({ data, context }) => wb.assignChecklistOwner(context.supabase as wb.Db, context.userId, data));
+  .handler(({ data, context }) =>
+    wb.assignChecklistOwner(context.supabase as wb.Db, context.userId, data),
+  );
 
 export const saveLabFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

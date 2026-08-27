@@ -3,13 +3,19 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { completeEmailTaskFn, getCaseDetailFn, listPublishedTemplatesFn, saveEmailDraftFn } from "@/lib/workbench.functions";
+import {
+  completeEmailTaskFn,
+  getCaseDetailFn,
+  listPublishedTemplatesFn,
+  saveEmailDraftFn,
+} from "@/lib/workbench.functions";
 import { useWorkbench } from "@/components/workbench/CaseList";
 import type { CaseDetailDto, TemplateDto } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
 import { opErrorMessage } from "@/lib/errors";
 import { fmtDate } from "@/lib/format";
 import { Empty, Icon, Loading } from "@/components/workbench/ui";
+import { openOutlookDraft } from "@/lib/outlook-draft-service";
 
 export const Route = createFileRoute("/_authenticated/email")({
   validateSearch: (s: Record<string, unknown>) => ({
@@ -19,24 +25,31 @@ export const Route = createFileRoute("/_authenticated/email")({
   head: () => ({
     meta: [
       { title: "Email Center · Team Workbench" },
-      { name: "description", content: "Compose onboarding and offboarding emails from templates with case data auto-fill." },
+      {
+        name: "description",
+        content:
+          "Compose onboarding and offboarding emails from templates with case data auto-fill.",
+      },
     ],
   }),
   component: EmailPage,
 });
 
 function fill(text: string | null | undefined, vars: Record<string, string>): string {
-  return (text ?? "").replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key: string) => vars[key] ?? `{{${key}}}`);
+  return (text ?? "").replace(
+    /\{\{\s*([\w.]+)\s*\}\}/g,
+    (_, key: string) => vars[key] ?? `{{${key}}}`,
+  );
 }
 
 export function EmailPage() {
   const { t, lang } = useLang();
-  const search = useSearch({ strict:false }) as {caseId?:string;taskId?:string};
-  const qc=useQueryClient();
+  const search = useSearch({ strict: false }) as { caseId?: string; taskId?: string };
+  const qc = useQueryClient();
   const fetchTemplates = useServerFn(listPublishedTemplatesFn);
   const fetchDetail = useServerFn(getCaseDetailFn);
   const callSaveDraft = useServerFn(saveEmailDraftFn);
-  const callCompleteTask=useServerFn(completeEmailTaskFn);
+  const callCompleteTask = useServerFn(completeEmailTaskFn);
   const { data: wbData, isLoading: wbLoading } = useWorkbench();
   const { data: tplData, isLoading: tplLoading } = useQuery({
     queryKey: ["templates"],
@@ -44,9 +57,10 @@ export function EmailPage() {
   });
 
   const [caseId, setCaseId] = useState(search.caseId ?? "");
-  const taskId=search.taskId ?? "";
+  const taskId = search.taskId ?? "";
   const [templateId, setTemplateId] = useState("");
   const [extra, setExtra] = useState("");
+  const [manualRecipient, setManualRecipient] = useState("");
   const [saved, setSaved] = useState(false);
 
   const { data: detailData } = useQuery({
@@ -57,16 +71,21 @@ export function EmailPage() {
 
   const allTemplates: TemplateDto[] = tplData && !("error" in tplData) ? tplData.templates : [];
   const detail: CaseDetailDto | null = detailData && !("error" in detailData) ? detailData : null;
-  const caseType=detail?.case.caseType.toLowerCase() ?? "";
-  const templates=allTemplates.filter(x=>!caseType||x.applicableCaseTypes.includes(caseType));
+  const caseType = detail?.case.caseType.toLowerCase() ?? "";
+  const templates = allTemplates.filter(
+    (x) => !caseType || x.applicableCaseTypes.includes(caseType),
+  );
   const template = templates.find((x) => x.id === templateId) ?? null;
-  const linkedTask=detail?.tasks.find(x=>x.id===taskId)??null;
+  const linkedTask = detail?.tasks.find((x) => x.id === taskId) ?? null;
 
-  useEffect(()=>{
-    if(!taskId||templateId||!templates.length)return;
-    const welcome=templates.find(x=>x.name.toLowerCase().includes("welcome")||x.subject.toLowerCase().includes("welcome"));
-    setTemplateId((welcome??templates[0])?.id??"");
-  },[taskId,templateId,templates]);
+  useEffect(() => {
+    if (!taskId || templateId || !templates.length) return;
+    const welcome = templates.find(
+      (x) =>
+        x.name.toLowerCase().includes("welcome") || x.subject.toLowerCase().includes("welcome"),
+    );
+    setTemplateId((welcome ?? templates[0])?.id ?? "");
+  }, [taskId, templateId, templates]);
 
   const vars = useMemo(() => {
     if (!detail) return {} as Record<string, string>;
@@ -75,12 +94,20 @@ export function EmailPage() {
     return {
       "person.first_name": firstName,
       "person.full_name": c.name,
-      "candidate_name": c.name,
-      "candidate_first_name": firstName,
-      "employee_name": c.name,
+      candidate_name: c.name,
+      candidate_first_name: firstName,
+      employee_name: c.name,
       "case.start_date": fmtDate(c.startDate, lang),
-      "start_date": fmtDate(c.startDate, lang),
+      start_date: fmtDate(c.startDate, lang),
       "case.end_date": fmtDate(c.endDate, lang),
+      employee_id: c.employeeId ?? "",
+      personal_email: c.personEmail ?? "",
+      contract_end_date: fmtDate(c.contractEndDate, lang),
+      last_working_day: fmtDate(c.lastWorkingDay, lang),
+      supervisor_name: c.supervisorName ?? "",
+      team: c.team,
+      employment_type: c.employmentType,
+      workplace: c.location ?? "",
       "manager.name": c.managerName ?? "",
       "person.team": c.team,
       "case.role": c.role ?? "",
@@ -94,7 +121,8 @@ export function EmailPage() {
 
   const subject = template ? fill(template.subject, vars) : "";
   const body = template ? fill(template.body, vars) : "";
-  const recipient = detail?.case.personEmail ?? "";
+  const recipient =
+    template?.recipientSource === "manual" ? manualRecipient : (detail?.case.personEmail ?? "");
   const ready = template && detail;
 
   const saveDraft = async () => {
@@ -115,15 +143,48 @@ export function EmailPage() {
     }
   };
 
-  const markSent=async()=>{
-    if(!ready||!linkedTask)return;
-    try{const res=await callCompleteTask({data:{taskId:linkedTask.id,caseId,templateId:template.id,subject,body,recipient}});if("error" in res){toast.error(opErrorMessage(t,res.error));return}await Promise.all([qc.invalidateQueries({queryKey:["case",caseId]}),qc.invalidateQueries({queryKey:["workbench"]})]);toast.success(t("Email marked as sent and task completed"));}catch{toast.error(t("Something went wrong. Please try again."))}
+  const markSent = async () => {
+    if (!ready || !linkedTask) return;
+    try {
+      const res = await callCompleteTask({
+        data: { taskId: linkedTask.id, caseId, templateId: template.id, subject, body, recipient },
+      });
+      if ("error" in res) {
+        toast.error(opErrorMessage(t, res.error));
+        return;
+      }
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["case", caseId] }),
+        qc.invalidateQueries({ queryKey: ["workbench"] }),
+      ]);
+      toast.success(t("Email marked as sent and task completed"));
+    } catch {
+      toast.error(t("Something went wrong. Please try again."));
+    }
   };
 
-  const openOutlook = () => {
+  const openOutlook = async () => {
     if (!ready) return;
-    const url = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.open(url, "_self");
+    if (!recipient) {
+      toast.error(t("Recipient is missing. Update the Person profile or enter it manually."));
+      return;
+    }
+    if (
+      !window.confirm(
+        t("Review the recipient, subject, body and attachments before opening Outlook."),
+      )
+    )
+      return;
+    const result = await openOutlookDraft({
+      to: recipient,
+      subject,
+      body,
+      attachments: template.attachments,
+    });
+    if (result.mode === "mailto" && template.attachments.length)
+      toast.warning(
+        t("The local Outlook helper is unavailable. Outlook opened without automatic attachments."),
+      );
   };
 
   return (
@@ -132,7 +193,11 @@ export function EmailPage() {
         <div>
           <p className="eyebrow">{t("COMMUNICATION")}</p>
           <h1>{t("Email Center")}</h1>
-          {linkedTask?<p>{t("Linked task")}: <b>{t(linkedTask.title)}</b></p>:null}
+          {linkedTask ? (
+            <p>
+              {t("Linked task")}: <b>{t(linkedTask.title)}</b>
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -206,8 +271,23 @@ export function EmailPage() {
                 <span>
                   {t("Additional Information")} ({t("Manual")})
                 </span>
-                <textarea rows={3} value={extra} onChange={(e) => setExtra(e.target.value)} maxLength={1000} />
+                <textarea
+                  rows={3}
+                  value={extra}
+                  onChange={(e) => setExtra(e.target.value)}
+                  maxLength={1000}
+                />
               </label>
+              {template?.recipientSource === "manual" ? (
+                <label className="sharefield">
+                  <span>{t("Manual recipient")}</span>
+                  <input
+                    type="email"
+                    value={manualRecipient}
+                    onChange={(e) => setManualRecipient(e.target.value)}
+                  />
+                </label>
+              ) : null}
             </>
           ) : (
             <div className="inlineempty">{t("Select a template and case to begin")}</div>
@@ -224,7 +304,18 @@ export function EmailPage() {
               <button className="primary" disabled={!ready || !recipient} onClick={openOutlook}>
                 <Icon name="send" /> {t("Open in Outlook")}
               </button>
-              {linkedTask?<button className="successbutton" disabled={!ready||linkedTask.status.toLowerCase()==="completed"} onClick={markSent}><Icon name="check"/>{linkedTask.status.toLowerCase()==="completed"?t("Email Sent"):t("Mark as Sent")}</button>:null}
+              {linkedTask ? (
+                <button
+                  className="successbutton"
+                  disabled={!ready || linkedTask.status.toLowerCase() === "completed"}
+                  onClick={markSent}
+                >
+                  <Icon name="check" />
+                  {linkedTask.status.toLowerCase() === "completed"
+                    ? t("Email Sent")
+                    : t("Mark as Sent")}
+                </button>
+              ) : null}
             </div>
           </div>
           {ready ? (
@@ -241,6 +332,18 @@ export function EmailPage() {
               </div>
               <div className="emailbody">
                 <pre style={{ whiteSpace: "pre-wrap", font: "inherit", margin: 0 }}>{body}</pre>
+              </div>
+              <div className="chips">
+                <b>{t("Attachments")}</b>
+                {template.attachments.length ? (
+                  template.attachments.map((a) => (
+                    <span className="variable" key={a.id}>
+                      {a.filename}
+                    </span>
+                  ))
+                ) : (
+                  <span>{t("No attachments")}</span>
+                )}
               </div>
             </>
           ) : (
