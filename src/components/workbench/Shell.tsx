@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from "@tanstack/react-router";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useLang } from "@/lib/i18n";
 import { initialsOf } from "@/lib/format";
@@ -38,7 +38,14 @@ export function Shell({
   const location = useLocation();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
   const [search, setSearch] = useState("");
+
+  // Close the mobile drawer whenever navigation happens.
+  useEffect(() => {
+    setNavOpen(false);
+    setMenuOpen(false);
+  }, [location.pathname]);
 
   const signOut = async () => {
     await supabase.auth.signOut();
@@ -52,7 +59,10 @@ export function Shell({
 
   return (
     <div className="shell">
-      <aside className="sidebar">
+      {navOpen ? (
+        <button className="scrim" aria-label={t("Close")} onClick={() => setNavOpen(false)} />
+      ) : null}
+      <aside className={navOpen ? "sidebar open" : "sidebar"}>
         <div className="brand">
           <span className="brandmark">TW</span>
           <span>
@@ -88,6 +98,14 @@ export function Shell({
       </aside>
       <div>
         <header className="topbar">
+          <button
+            className="navtoggle"
+            onClick={() => setNavOpen((v) => !v)}
+            aria-label={t("Menu")}
+            aria-expanded={navOpen}
+          >
+            <Icon name="menu" />
+          </button>
           <form className="globalsearch" onSubmit={submitSearch}>
             <Icon name="search" />
             <input

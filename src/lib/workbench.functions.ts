@@ -16,8 +16,8 @@ export const getOperationsOverviewFn = createServerFn({ method: "GET" })
         employmentType: z.string().max(80).optional(),
         caseType: z.string().max(40).optional(),
         status: z.string().max(80).optional(),
-        dateFrom: z.string().date().optional(),
-        dateTo: z.string().date().optional(),
+        dateFrom: z.union([z.string().date(), z.literal("")]).optional(),
+        dateTo: z.union([z.string().date(), z.literal("")]).optional(),
       })
       .parse(data),
   )

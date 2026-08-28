@@ -32,6 +32,7 @@ const ICONS: Record<string, string> = {
   folder: "🗂",
   shield: "🛡",
   upload: "⇪",
+  menu: "☰",
 };
 
 export function Icon({ name, className }: { name: string; className?: string }) {
@@ -137,10 +138,27 @@ export function Empty({
   );
 }
 
+export function Spinner() {
+  return <span className="btnspin" aria-hidden />;
+}
+
+/** Dashboard-shaped skeleton: keeps layout stable while data loads. */
 export function Loading() {
   return (
-    <div className="authwrap">
-      <span className="loadingring" />
+    <div className="pageskeleton" role="status" aria-busy="true" aria-live="polite">
+      <div className="skeleton" style={{ height: 26, width: 220 }} />
+      <div className="skeleton" style={{ height: 14, width: 320 }} />
+      <div className="skelcards">
+        <div className="skeleton" />
+        <div className="skeleton" />
+        <div className="skeleton" />
+        <div className="skeleton" />
+      </div>
+      <div className="skelrows">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <div className="skeleton" key={index} />
+        ))}
+      </div>
     </div>
   );
 }
