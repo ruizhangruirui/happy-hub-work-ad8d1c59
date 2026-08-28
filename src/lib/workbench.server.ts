@@ -369,7 +369,7 @@ export async function getCaseDetail(
     const { data: fullRow, error } = await supabase
       .from("cases")
       .select(
-        "*, persons(full_name, given_name, preferred_name, email, employee_id, phone, lab_id, team_id, teams(name), manager:manager_id(full_name)), employments(company_email,workload)",
+        "*, persons(full_name, given_name, preferred_name, email, employee_id, phone, lab_id, team_id, teams(name), manager:manager_id(full_name)), employments!cases_employment_id_fkey(company_email,workload)",
       )
       .eq("id", caseId)
       .maybeSingle();
