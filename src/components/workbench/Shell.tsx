@@ -59,7 +59,10 @@ export function Shell({
 
   return (
     <div className="shell">
-      <aside className="sidebar">
+      {navOpen ? (
+        <button className="scrim" aria-label={t("Close")} onClick={() => setNavOpen(false)} />
+      ) : null}
+      <aside className={navOpen ? "sidebar open" : "sidebar">
         <div className="brand">
           <span className="brandmark">TW</span>
           <span>
