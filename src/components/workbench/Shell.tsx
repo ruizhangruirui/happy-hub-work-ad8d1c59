@@ -38,7 +38,14 @@ export function Shell({
   const location = useLocation();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
   const [search, setSearch] = useState("");
+
+  // Close the mobile drawer whenever navigation happens.
+  useEffect(() => {
+    setNavOpen(false);
+    setMenuOpen(false);
+  }, [location.pathname]);
 
   const signOut = async () => {
     await supabase.auth.signOut();
