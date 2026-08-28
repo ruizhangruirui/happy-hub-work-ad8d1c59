@@ -391,7 +391,7 @@ export function EmailPage() {
   };
 
   return (
-    <div>
+    <div className="emailpage">
       <div className="pagehead">
         <div>
           <p className="eyebrow">{t("COMMUNICATION")}</p>
@@ -400,7 +400,7 @@ export function EmailPage() {
         </div>
       </div>
       <div className="emailgrid">
-        <section className="panel information">
+        <section className="panel information emailcompose">
           <div className="columnhead">
             <b>1. {t("Select")}</b>
           </div>
@@ -507,38 +507,56 @@ export function EmailPage() {
           <div className="columnhead">
             <b>{t("Attachments")}</b>
           </div>
-          <p>
-            <b>{t("Template Attachments")}</b>:{" "}
-            {template?.attachments.map((item) => item.filename).join(", ") || t("No attachments")}
-          </p>
-          <p>
-            <b>{t("Additional Attachments")}</b>:{" "}
-            {additional.map((item) => (
-              <span className="variable" key={item.id}>
-                {item.filename}{" "}
-                {item.linked ? (
-                  <small>{t("Linked to draft")}</small>
-                ) : (
-                  <button
-                    onClick={() => {
-                      void (async () => {
-                        const deleted = await deleteAttachment({
-                          data: { attachmentId: item.id },
-                        });
-                        if ("error" in deleted) {
-                          toast.error(opErrorMessage(t, deleted.error));
-                          return;
-                        }
-                        setAdditional((list) => list.filter((file) => file.id !== item.id));
-                      })();
-                    }}
-                  >
-                    ×
-                  </button>
-                )}
-              </span>
-            ))}
-          </p>
+          <div className="emailattachmentgroup">
+            <b>{t("Template Attachments")}</b>
+            <div className="emailattachmentlist">
+              {template?.attachments.length ? (
+                template.attachments.map((item) => (
+                  <span className="emailattachmentchip" key={item.id}>
+                    <Icon name="attachment" /> {item.filename}
+                  </span>
+                ))
+              ) : (
+                <span className="emailattachmentempty">{t("No attachments")}</span>
+              )}
+            </div>
+          </div>
+          <div className="emailattachmentgroup">
+            <b>{t("Additional Attachments")}</b>
+            <div className="emailattachmentlist">
+              {additional.length ? (
+                additional.map((item) => (
+                  <span className="variable" key={item.id}>
+                    <span className="emailattachmentname">{item.filename}</span>
+                    {item.linked ? (
+                      <small>{t("Linked to draft")}</small>
+                    ) : (
+                      <button
+                        className="attachmentremove"
+                        aria-label={t("Remove")}
+                        onClick={() => {
+                          void (async () => {
+                            const deleted = await deleteAttachment({
+                              data: { attachmentId: item.id },
+                            });
+                            if ("error" in deleted) {
+                              toast.error(opErrorMessage(t, deleted.error));
+                              return;
+                            }
+                            setAdditional((list) => list.filter((file) => file.id !== item.id));
+                          })();
+                        }}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </span>
+                ))
+              ) : (
+                <span className="emailattachmentempty">{t("No attachments")}</span>
+              )}
+            </div>
+          </div>
           {!communicationId ? (
             <label className="secondary">
               <Icon name="plus" /> {t("Add Attachment")}
@@ -555,10 +573,10 @@ export function EmailPage() {
             </label>
           ) : null}
         </section>
-        <section className="panel preview">
-          <div className="columnhead">
+        <section className="panel preview emailpreview">
+          <div className="columnhead emailreviewhead">
             <b>3. {t("Review")}</b>
-            <div className="actions">
+            <div className="actions emailactions">
               <button
                 className="primary"
                 disabled={!ready || Boolean(actionBusy)}
