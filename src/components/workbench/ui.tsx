@@ -32,6 +32,7 @@ const ICONS: Record<string, string> = {
   folder: "🗂",
   shield: "🛡",
   upload: "⇪",
+  menu: "☰",
 };
 
 export function Icon({ name, className }: { name: string; className?: string }) {
