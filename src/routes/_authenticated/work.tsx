@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { lazy, Suspense, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   getOperationsOverviewFn,
@@ -15,8 +15,6 @@ import { businessDate } from "@/lib/domain";
 import { exportRows } from "@/lib/export-service";
 import { opErrorMessage } from "@/lib/errors";
 import { Badge, Empty, Icon, Loading } from "@/components/workbench/ui";
-
-const OperationsCharts = lazy(() => import("@/components/workbench/OperationsCharts"));
 
 export const Route = createFileRoute("/_authenticated/work")({
   head: () => ({
@@ -425,19 +423,6 @@ export function WorkPage() {
           ))}
         </div>
       </section>
-
-      {overview.reportingMode === "hr" ? (
-        <Suspense fallback={<div className="inlineempty">{t("Loading analytics…")}</div>}>
-          <OperationsCharts
-            employmentTitle={t("Active People by Employment Type")}
-            teamTitle={t("Active People by Team")}
-            trendTitle={t("Join / Leave Trend")}
-            employment={overview.activeByEmploymentType}
-            teams={overview.activeByTeam}
-            trend={overview.monthlyLifecycleTrend}
-          />
-        </Suspense>
-      ) : null}
 
       <section className="panel" style={{ marginTop: 22 }}>
         <div className="panelhead">

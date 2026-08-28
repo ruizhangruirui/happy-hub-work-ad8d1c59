@@ -32,11 +32,11 @@ export default function OperationsCharts({
         <DistributionChart title={employmentTitle} data={employment} color="#4968db" />
         <DistributionChart title={teamTitle} data={teams} color="#4f9b78" />
       </div>
-      <section className="panel" style={{ marginTop: 22 }}>
+      <section className="panel analyticstrend">
         <div className="panelhead">
           <b>{trendTitle}</b>
         </div>
-        <div style={{ height: 260 }}>
+        <div className="analyticschart analyticscharttrend">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={trend}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -68,7 +68,7 @@ function DistributionChart({
       <div className="panelhead">
         <b>{title}</b>
       </div>
-      <div style={{ height: 220 }}>
+      <div className="analyticschart analyticschartdistribution">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data}>
             <CartesianGrid strokeDasharray="3 3" />

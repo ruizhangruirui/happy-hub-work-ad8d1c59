@@ -19,6 +19,7 @@ const ICONS: Record<string, string> = {
   x: "×",
   user: "👤",
   users: "👥",
+  chart: "▥",
   lock: "🔒",
   doc: "📄",
   history: "◔",

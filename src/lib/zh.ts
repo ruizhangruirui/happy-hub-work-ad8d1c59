@@ -156,3 +156,15 @@ Object.assign(zh, {
   "Can view shared Case information allowed by their access":"可查看其权限允许的共享事项信息",
   "Can participate according to functional-team and Task permissions":"可依据职能团队和任务权限参与协作"
 });
+
+Object.assign(zh, {
+  "People Analytics":"人员分析",
+  "WORKFORCE ANALYTICS":"人员数据分析",
+  "Workforce composition and join / leave trends":"在职人员构成与入离职趋势",
+  "Active People by Employment Type":"按用工类型统计在职人员",
+  "Active People by Team":"按团队统计在职人员",
+  "Join / Leave Trend":"入职 / 离职趋势",
+  "People analytics could not be loaded.":"无法加载人员分析。",
+  "People analytics is available to HR operations only.":"人员分析仅对 HR 运营人员开放。",
+  "Loading analytics…":"正在加载分析数据……"
+});

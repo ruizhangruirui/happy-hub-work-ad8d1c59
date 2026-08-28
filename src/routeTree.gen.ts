@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
 import { Route as AuthenticatedEmailRouteImport } from './routes/_authenticated/email'
 import { Route as AuthenticatedEmailCenterRouteImport } from './routes/_authenticated/email-center'
 import { Route as AuthenticatedOffboardingRouteImport } from './routes/_authenticated/offboarding'
@@ -39,6 +40,11 @@ const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedAnalyticsRoute = AuthenticatedAnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
+  getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedEmailRoute = AuthenticatedEmailRouteImport.update({
   id: '/email',
@@ -113,6 +119,7 @@ const AuthenticatedPeoplePersonIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/analytics': typeof AuthenticatedAnalyticsRoute
   '/email': typeof AuthenticatedEmailRoute
   '/email-center': typeof AuthenticatedEmailCenterRoute
   '/offboarding': typeof AuthenticatedOffboardingRoute
@@ -130,6 +137,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/analytics': typeof AuthenticatedAnalyticsRoute
   '/email': typeof AuthenticatedEmailRoute
   '/email-center': typeof AuthenticatedEmailCenterRoute
   '/offboarding': typeof AuthenticatedOffboardingRoute
@@ -149,6 +157,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
   '/_authenticated/email': typeof AuthenticatedEmailRoute
   '/_authenticated/email-center': typeof AuthenticatedEmailCenterRoute
   '/_authenticated/offboarding': typeof AuthenticatedOffboardingRoute
@@ -168,6 +177,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/analytics'
     | '/email'
     | '/email-center'
     | '/offboarding'
@@ -185,6 +195,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/analytics'
     | '/email'
     | '/email-center'
     | '/offboarding'
@@ -203,6 +214,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/_authenticated/analytics'
     | '/_authenticated/email'
     | '/_authenticated/email-center'
     | '/_authenticated/offboarding'
@@ -247,6 +259,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/analytics': {
+      id: '/_authenticated/analytics'
+      path: '/analytics'
+      fullPath: '/analytics'
+      preLoaderRoute: typeof AuthenticatedAnalyticsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/email': {
       id: '/_authenticated/email'
@@ -354,6 +373,7 @@ const AuthenticatedPeopleRouteWithChildren =
   AuthenticatedPeopleRoute._addFileChildren(AuthenticatedPeopleRouteChildren)
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAnalyticsRoute: typeof AuthenticatedAnalyticsRoute
   AuthenticatedEmailRoute: typeof AuthenticatedEmailRoute
   AuthenticatedEmailCenterRoute: typeof AuthenticatedEmailCenterRoute
   AuthenticatedOffboardingRoute: typeof AuthenticatedOffboardingRoute
@@ -368,6 +388,7 @@ interface AuthenticatedRouteRouteChildren {
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAnalyticsRoute: AuthenticatedAnalyticsRoute,
   AuthenticatedEmailRoute: AuthenticatedEmailRoute,
   AuthenticatedEmailCenterRoute: AuthenticatedEmailCenterRoute,
   AuthenticatedOffboardingRoute: AuthenticatedOffboardingRoute,
