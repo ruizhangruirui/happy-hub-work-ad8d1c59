@@ -1183,4 +1183,27 @@ describe("Phase 3 Email Center — PostgreSQL security and history", () => {
     );
     expect(state.rows[0]).toEqual({ status: "Completed", completed_by: ADMIN });
   });
+
+  it("builds the Phase 4 operations report and keeps scoped managers isolated", async () => {
+    type Report = { tasks: Array<{ caseId: string }>; taskWorkload: unknown[] };
+    const teamA = await createOnboarding(ADMIN, TEAM_A, "P4-SCOPE-A");
+    const teamB = await createOnboarding(ADMIN, TEAM_B, "P4-SCOPE-B");
+    const reportA = await asUser<{ report: Report }>(
+      MANAGER_A,
+      "select public.get_operations_overview() report",
+    );
+    const reportB = await asUser<{ report: Report }>(
+      MANAGER_B,
+      "select public.get_operations_overview() report",
+    );
+    const caseA = teamA.rows[0]!.result.caseId;
+    const caseB = teamB.rows[0]!.result.caseId;
+    const visibleA = reportA.rows[0]!.report.tasks.map((row) => row.caseId);
+    const visibleB = reportB.rows[0]!.report.tasks.map((row) => row.caseId);
+    expect(visibleA).toContain(caseA);
+    expect(visibleA).not.toContain(caseB);
+    expect(visibleB).toContain(caseB);
+    expect(visibleB).not.toContain(caseA);
+    expect(reportA.rows[0]!.report.taskWorkload).toHaveLength(3);
+  });
 });

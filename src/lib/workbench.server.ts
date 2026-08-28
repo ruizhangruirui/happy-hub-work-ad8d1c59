@@ -23,6 +23,7 @@ import type {
   PersonDetailDto,
   ChecklistTemplateDto,
   ChecklistTemplateItemDto,
+  OperationsOverviewDto,
 } from "./types";
 
 export type Db = SupabaseClient<any, any, any>;
@@ -141,7 +142,38 @@ function toCaseDto(row: any, accessLevel: AccessLevel, nameOf: Map<string, strin
     joinedAt: row.joined_at ?? null,
     leftDate: row.left_date ?? null,
     leftAt: row.left_at ?? null,
+    leavingType: row.leaving_type ?? null,
   };
+}
+
+export interface OperationsOverviewFilters {
+  team?: string | undefined;
+  employmentType?: string | undefined;
+  caseType?: string | undefined;
+  status?: string | undefined;
+  dateFrom?: string | undefined;
+  dateTo?: string | undefined;
+}
+
+export async function getOperationsOverview(
+  supabase: Db,
+  userId: string,
+  filters: OperationsOverviewFilters,
+): Promise<OperationsOverviewDto | { error: "access_denied" }> {
+  if (!(await loadIdentity(supabase, userId))) return { error: "access_denied" };
+  const { data, error } = await supabase.rpc("get_operations_overview", {
+    _team: filters.team || null,
+    _employment_type: filters.employmentType || null,
+    _case_type: filters.caseType || null,
+    _status: filters.status || null,
+    _date_from: filters.dateFrom || null,
+    _date_to: filters.dateTo || null,
+  });
+  if (error) {
+    if (error.code === "42501") return { error: "access_denied" };
+    throw new Error(error.message);
+  }
+  return data as OperationsOverviewDto;
 }
 
 function toTaskDto(

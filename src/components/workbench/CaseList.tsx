@@ -33,6 +33,10 @@ export function CaseList({ caseType }: { caseType: "onboarding" | "offboarding" 
   const [status, setStatus] = useState("");
   const [team, setTeam] = useState("");
   const [empType, setEmpType] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [leavingType, setLeavingType] = useState("");
+  const [sort, setSort] = useState<"date" | "name" | "status" | "priority">("date");
   const [modalOpen, setModalOpen] = useState(openNew === "1");
 
   const wb: WorkbenchData | null = data && !("error" in data) ? data : null;
@@ -40,17 +44,39 @@ export function CaseList({ caseType }: { caseType: "onboarding" | "offboarding" 
   const filtered = useMemo(() => {
     if (!wb) return [];
     const needle = search.trim().toLowerCase();
-    return wb.cases.filter(
-      (c) =>
-        c.caseType.toLowerCase() === caseType &&
-        (!needle ||
-          c.name.toLowerCase().includes(needle) ||
-          c.team.toLowerCase().includes(needle)) &&
-        (!status || c.status === status) &&
-        (!team || c.team === team) &&
-        (!empType || c.employmentType === empType),
-    );
-  }, [wb, caseType, search, status, team, empType]);
+    return wb.cases
+      .filter((c) => {
+        const relevantDate =
+          caseType === "onboarding" ? c.startDate : (c.lastWorkingDay ?? c.contractEndDate);
+        return (
+          c.caseType.toLowerCase() === caseType &&
+          (!needle ||
+            c.name.toLowerCase().includes(needle) ||
+            c.team.toLowerCase().includes(needle)) &&
+          (!status || c.status === status) &&
+          (!team || c.team === team) &&
+          (!empType || c.employmentType === empType) &&
+          (!leavingType || c.leavingType === leavingType) &&
+          (!dateFrom || Boolean(relevantDate && relevantDate >= dateFrom)) &&
+          (!dateTo || Boolean(relevantDate && relevantDate <= dateTo))
+        );
+      })
+      .sort((a, b) => {
+        const av =
+          sort === "date"
+            ? caseType === "onboarding"
+              ? a.startDate
+              : (a.lastWorkingDay ?? a.contractEndDate)
+            : a[sort];
+        const bv =
+          sort === "date"
+            ? caseType === "onboarding"
+              ? b.startDate
+              : (b.lastWorkingDay ?? b.contractEndDate)
+            : b[sort];
+        return String(av ?? "").localeCompare(String(bv ?? ""));
+      });
+  }, [wb, caseType, search, status, team, empType, leavingType, dateFrom, dateTo, sort]);
 
   if (isLoading) return <Loading />;
   if (isError || !wb)
@@ -143,7 +169,50 @@ export function CaseList({ caseType }: { caseType: "onboarding" | "offboarding" 
             </option>
           ))}
         </select>
-        {search || status || team || empType ? (
+        {caseType === "offboarding" ? (
+          <select
+            className="filter"
+            value={leavingType}
+            onChange={(e) => setLeavingType(e.target.value)}
+          >
+            <option value="">{t("All Leaving Types")}</option>
+            {[
+              ...new Set(
+                wb.cases
+                  .filter((c) => c.caseType === "Offboarding")
+                  .map((c) => c.leavingType)
+                  .filter(Boolean) as string[],
+              ),
+            ].map((x) => (
+              <option key={x}>{x}</option>
+            ))}
+          </select>
+        ) : null}
+        <input
+          className="filter"
+          type="date"
+          value={dateFrom}
+          onChange={(e) => setDateFrom(e.target.value)}
+          aria-label={t("Date from")}
+        />
+        <input
+          className="filter"
+          type="date"
+          value={dateTo}
+          onChange={(e) => setDateTo(e.target.value)}
+          aria-label={t("Date to")}
+        />
+        <select
+          className="filter"
+          value={sort}
+          onChange={(e) => setSort(e.target.value as typeof sort)}
+        >
+          <option value="date">{t("Sort by date")}</option>
+          <option value="name">{t("Sort by name")}</option>
+          <option value="status">{t("Sort by status")}</option>
+          <option value="priority">{t("Sort by priority")}</option>
+        </select>
+        {search || status || team || empType || leavingType || dateFrom || dateTo ? (
           <button
             className="clear"
             onClick={() => {
@@ -151,6 +220,9 @@ export function CaseList({ caseType }: { caseType: "onboarding" | "offboarding" 
               setStatus("");
               setTeam("");
               setEmpType("");
+              setLeavingType("");
+              setDateFrom("");
+              setDateTo("");
             }}
           >
             <Icon name="x" /> {t("Clear")}

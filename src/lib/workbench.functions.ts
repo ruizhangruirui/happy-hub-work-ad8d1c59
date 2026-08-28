@@ -7,6 +7,24 @@ export const getWorkbenchDataFn = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(({ context }) => wb.getWorkbenchData(context.supabase as wb.Db, context.userId));
 
+export const getOperationsOverviewFn = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) =>
+    z
+      .object({
+        team: z.string().max(160).optional(),
+        employmentType: z.string().max(80).optional(),
+        caseType: z.string().max(40).optional(),
+        status: z.string().max(80).optional(),
+        dateFrom: z.string().date().optional(),
+        dateTo: z.string().date().optional(),
+      })
+      .parse(data),
+  )
+  .handler(({ data, context }) =>
+    wb.getOperationsOverview(context.supabase as wb.Db, context.userId, data),
+  );
+
 export const getCaseDetailFn = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data) => z.object({ caseId: z.string().uuid() }).parse(data))

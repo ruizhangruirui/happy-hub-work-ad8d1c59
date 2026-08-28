@@ -29,6 +29,8 @@ function ActiveRosterPage() {
   const [type, setType] = useState("");
   const [team, setTeam] = useState("");
   const [location, setLocation] = useState("");
+  const [supervisor, setSupervisor] = useState("");
+  const [lifecycle, setLifecycle] = useState("");
   const [sort, setSort] = useState<SortKey>("name");
   const [ascending, setAscending] = useState(true);
 
@@ -36,6 +38,9 @@ function ActiveRosterPage() {
   const teams = [...new Set(roster.map((x) => x.team))].sort();
   const locations = [...new Set(roster.map((x) => x.location).filter(Boolean) as string[])].sort();
   const types = [...new Set(roster.map((x) => x.employmentType))].sort();
+  const supervisors = [
+    ...new Set(roster.map((x) => x.supervisorName).filter(Boolean) as string[]),
+  ].sort();
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return roster
@@ -47,12 +52,14 @@ function ActiveRosterPage() {
             )) &&
           (!type || x.employmentType === type) &&
           (!team || x.team === team) &&
-          (!location || x.location === location),
+          (!location || x.location === location) &&
+          (!supervisor || x.supervisorName === supervisor) &&
+          (!lifecycle || (lifecycle === "leaving" ? x.leaving : !x.leaving)),
       )
       .sort(
         (a, b) => String(a[sort] ?? "").localeCompare(String(b[sort] ?? "")) * (ascending ? 1 : -1),
       );
-  }, [roster, search, type, team, location, sort, ascending]);
+  }, [roster, search, type, team, location, supervisor, lifecycle, sort, ascending]);
 
   const setSortKey = (key: SortKey) => {
     if (sort === key) setAscending((x) => !x);
@@ -66,14 +73,13 @@ function ActiveRosterPage() {
       (scope === "view" ? filtered : roster).map((x) => ({
         Name: x.name,
         "Employee ID": x.employeeId,
-        Email: x.email,
         "Employment Type": x.employmentType,
         Role: x.role,
         Team: x.team,
         Location: x.location,
         "Start Date": x.startDate,
         Supervisor: x.supervisorName,
-        Leaving: x.leaving ? "Yes" : "No",
+        Status: x.leaving ? "Leaving" : "Active",
         "Last Working Day": x.lastWorkingDay,
       })),
       `active-people-${scope}-${businessDate()}`,
@@ -147,6 +153,17 @@ function ActiveRosterPage() {
           {locations.map((x) => (
             <option key={x}>{x}</option>
           ))}
+        </select>
+        <select value={supervisor} onChange={(e) => setSupervisor(e.target.value)}>
+          <option value="">{t("All Supervisors")}</option>
+          {supervisors.map((x) => (
+            <option key={x}>{x}</option>
+          ))}
+        </select>
+        <select value={lifecycle} onChange={(e) => setLifecycle(e.target.value)}>
+          <option value="">{t("All Status")}</option>
+          <option value="active">{t("Active")}</option>
+          <option value="leaving">{t("Leaving")}</option>
         </select>
         <span>
           {filtered.length} {t("people")}

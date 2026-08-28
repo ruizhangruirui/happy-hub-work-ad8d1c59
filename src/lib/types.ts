@@ -120,6 +120,83 @@ export interface CaseDto {
   joinedAt: string | null;
   leftDate: string | null;
   leftAt: string | null;
+  leavingType: string | null;
+}
+
+export interface OperationsOverviewDto {
+  businessDate: string;
+  metrics: {
+    activePeople: number;
+    preboarding: number;
+    leaving: number;
+    joinedYtd: number;
+    leftYtd: number;
+  };
+  activePeople: Array<{
+    personId: string;
+    caseId: string;
+    name: string;
+    employeeId: string | null;
+    employmentType: string;
+    team: string;
+    role: string | null;
+    location: string | null;
+    supervisorName: string | null;
+    startDate: string;
+    leaving: boolean;
+    lastWorkingDay: string | null;
+  }>;
+  upcomingJoiners: OperationsCaseSummaryDto[];
+  upcomingLeavers: OperationsCaseSummaryDto[];
+  attentionCases: Array<{
+    caseId: string;
+    taskId: string | null;
+    name: string;
+    caseType: string;
+    severity: "Critical" | "Warning" | "Info";
+    reason: string;
+  }>;
+  taskWorkload: Array<{
+    ownerTeam: "HR" | "IT" | "Admin";
+    open: number;
+    overdue: number;
+    dueSoon: number;
+    unassigned: number;
+  }>;
+  activeByEmploymentType: Array<{ name: string; value: number }>;
+  activeByTeam: Array<{ name: string; value: number }>;
+  monthlyLifecycleTrend: Array<{ month: string; joined: number; left: number }>;
+  tasks: OperationsTaskReportDto[];
+}
+
+export interface OperationsCaseSummaryDto {
+  caseId: string;
+  name: string;
+  team: string;
+  employmentType: string;
+  startDate?: string | null;
+  lastWorkingDay?: string | null;
+  contractEndDate?: string | null;
+  leavingType?: string | null;
+  status: string;
+  mandatoryCompleted: number;
+  mandatoryTotal: number;
+  overdueTasks: number;
+}
+
+export interface OperationsTaskReportDto {
+  id: string;
+  caseId: string;
+  title: string;
+  person: string;
+  caseType: string;
+  ownerTeam: "HR" | "IT" | "Admin";
+  assignee: string | null;
+  mandatory: boolean;
+  status: string;
+  dueDate: string | null;
+  completedBy: string | null;
+  completedAt: string | null;
 }
 
 export interface ChecklistDto {
