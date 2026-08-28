@@ -117,7 +117,9 @@ function SearchPage() {
                     {task.caseId ? (
                       <button
                         className="open"
-                        onClick={() => navigate({ to: "/cases/$caseId", params: { caseId: task.caseId! } })}
+                        onClick={() =>
+                          navigate({ to: "/cases/$caseId", params: { caseId: task.caseId! } })
+                        }
                         aria-label={t("Open Case")}
                       >
                         ›

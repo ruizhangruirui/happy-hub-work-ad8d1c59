@@ -16,6 +16,17 @@ dist-ssr
 .tanstack/**
 .nitro
 *.local
+.env
+.env.*
+!.env.example
+
+# Local test/security evidence and Windows helper output
+coverage/
+test-results/
+playwright-report/
+tools/outlook-helper/bin/
+tools/outlook-helper/obj/
+tools/outlook-helper/publish/
 
 # Wrangler / Cloudflare
 .wrangler/

@@ -17,8 +17,8 @@ const TEAM_B = "cccccccc-cccc-cccc-cccc-cccccccccccc";
 
 let db: PGlite;
 
-async function bootstrapSupabaseSchemas() {
-  await db.exec(`
+async function bootstrapSupabaseSchemas(target = db) {
+  await target.exec(`
     create role anon nologin;
     create role authenticated nologin;
     create role service_role nologin bypassrls;
@@ -70,12 +70,12 @@ async function bootstrapSupabaseSchemas() {
   `);
 }
 
-async function applyMigrations() {
+async function applyMigrations(target = db, include: (filename: string) => boolean = () => true) {
   const directory = resolve(process.cwd(), "supabase/migrations");
   for (const file of readdirSync(directory)
-    .filter((name) => name.endsWith(".sql"))
+    .filter((name) => name.endsWith(".sql") && include(name))
     .sort()) {
-    await db.exec(readFileSync(resolve(directory, file), "utf8"));
+    await target.exec(readFileSync(resolve(directory, file), "utf8"));
   }
 }
 
@@ -1129,6 +1129,14 @@ describe("Phase 3 Email Center — PostgreSQL security and history", () => {
       [attachmentId],
     );
     expect(requested.rows[0]!.path).toBe("additional/temporary.pdf");
+    expect(
+      (
+        await db.query(
+          "select id from public.email_additional_attachments where id=$1 and deletion_requested_at is not null",
+          [attachmentId],
+        )
+      ).rowCount,
+    ).toBe(1);
     await db.query(
       "insert into storage.objects(bucket_id,name,owner,metadata) values('email-attachments','additional/temporary.pdf',$1,'{}')",
       [ADMIN],
@@ -1138,6 +1146,13 @@ describe("Phase 3 Email Center — PostgreSQL security and history", () => {
       "delete from storage.objects where bucket_id='email-attachments' and name='additional/temporary.pdf' returning name",
     );
     expect(removedObject.rows).toEqual([{ name: "additional/temporary.pdf" }]);
+    expect(
+      (
+        await db.query("select id from public.email_additional_attachments where id=$1", [
+          attachmentId,
+        ])
+      ).rowCount,
+    ).toBe(1);
     const finalized = await asUser<{ removed: boolean }>(
       ADMIN,
       "select public.finalize_temporary_email_attachment_deletion($1) removed",
@@ -1646,41 +1661,16 @@ describe("Phase 4 Final Patch — HR reporting scope is independent from mutatio
 
 describe("Phase 5 production security audit", () => {
   it("enables RLS on every business table", async () => {
-    const businessTables = [
-      "profiles",
-      "user_roles",
-      "user_scopes",
-      "user_operational_teams",
-      "persons",
-      "employments",
-      "cases",
-      "case_members",
-      "tasks",
-      "task_comments",
-      "checklist_templates",
-      "checklist_template_items",
-      "checklist_items",
-      "case_files",
-      "task_files",
-      "email_templates",
-      "email_variable_library",
-      "email_template_variables",
-      "email_template_attachments",
-      "email_communications",
-      "email_additional_attachments",
-      "email_communication_attachment_snapshots",
-      "audit_logs",
-      "external_collaboration_requests",
-    ];
+    const intentionallyNonBusinessTables: string[] = [];
     const result = await db.query<{ relname: string; relrowsecurity: boolean }>(
       `select relname,relrowsecurity
        from pg_class join pg_namespace on pg_namespace.oid=pg_class.relnamespace
-       where nspname='public' and relname=any($1::text[])`,
-      [businessTables],
+       where nspname='public' and relkind='r' order by relname`,
     );
-    const missing = businessTables.filter(
-      (name) => !result.rows.some((row) => row.relname === name && row.relrowsecurity),
-    );
+    const missing = result.rows
+      .filter((row) => !intentionallyNonBusinessTables.includes(row.relname) && !row.relrowsecurity)
+      .map((row) => row.relname);
+    expect(result.rows.length).toBeGreaterThanOrEqual(28);
     expect(missing).toEqual([]);
   });
 
@@ -1733,6 +1723,11 @@ describe("Phase 5 production security audit", () => {
       [fileId],
     );
     expect(requested.rows[0]!.path).toBe(path);
+    const recoverableRequest = await db.query<{ requested: boolean }>(
+      "select deletion_requested_at is not null requested from public.case_files where id=$1",
+      [fileId],
+    );
+    expect(recoverableRequest.rows).toEqual([{ requested: true }]);
     expect(
       (
         await asUser(
@@ -1743,12 +1738,52 @@ describe("Phase 5 production security audit", () => {
       ).affectedRows,
     ).toBe(1);
     expect(
+      (await db.query("select id from public.case_files where id=$1", [fileId])).rowCount,
+    ).toBe(1);
+    expect(
       (
         await asUser<{ ok: boolean }>(ADMIN, "select public.finalize_case_file_deletion($1) ok", [
           fileId,
         ])
       ).rows[0]!.ok,
     ).toBe(true);
+  });
+
+  it("denies forged and cross-scope Storage object reads and deletes", async () => {
+    const created = await createOnboarding(ADMIN, TEAM_B, "P5-STORAGE-SCOPE");
+    const caseId = created.rows[0]!.result.caseId;
+    const fileId = "57575757-5757-5757-5757-575757575757";
+    const path = `${caseId}/${fileId}-private.pdf`;
+    await db.query(
+      `insert into public.case_files(id,case_id,filename,storage_path,content_type,size,uploaded_by)
+       values($1,$2,'private.pdf',$3,'application/pdf',128,$4)`,
+      [fileId, caseId, path, ADMIN],
+    );
+    await db.query(
+      `insert into storage.objects(bucket_id,name,owner,metadata) values
+       ('case-files',$1,$2,'{}'),('case-files','forged/not-a-case.pdf',$2,'{}')`,
+      [path, ADMIN],
+    );
+
+    for (const attacker of [MANAGER_A, VIEWER, IT_USER]) {
+      const read = await asUser<{ name: string }>(
+        attacker,
+        "select name from storage.objects where bucket_id='case-files' and name=$1",
+        [path],
+      );
+      const removed = await asUser<{ name: string }>(
+        attacker,
+        "delete from storage.objects where bucket_id='case-files' and name=$1 returning name",
+        [path],
+      );
+      expect(read.rows).toEqual([]);
+      expect(removed.rows).toEqual([]);
+    }
+    const forgedDelete = await asUser<{ name: string }>(
+      ADMIN,
+      "delete from storage.objects where bucket_id='case-files' and name='forged/not-a-case.pdf' returning name",
+    );
+    expect(forgedDelete.rows).toEqual([]);
   });
 
   it("stages orphan cleanup and never touches bound historical attachments", async () => {
@@ -1800,14 +1835,111 @@ describe("Phase 5 production security audit", () => {
     expect(retained.rows).toEqual([{ id: boundId }]);
   });
 
-  it("returns a bounded authorization-safe People page", async () => {
-    const page = await asUser<{
-      value: { items: Array<{ personId: string }>; pageSize: number; total: number };
-    }>(ADMIN, "select public.list_people_page(null,null,1,2) value");
-    expect(page.rows[0]!.value.pageSize).toBe(2);
-    expect(page.rows[0]!.value.items.length).toBeLessThanOrEqual(2);
-    expect(page.rows[0]!.value.total).toBeGreaterThanOrEqual(page.rows[0]!.value.items.length);
+  it("paginates and searches People without cross-scope count or match leakage", async () => {
+    const inScope = await Promise.all([
+      createOnboarding(ADMIN, TEAM_A, "P5-PAGE-A"),
+      createOnboarding(ADMIN, TEAM_A, "P5-PAGE-B"),
+      createOnboarding(ADMIN, TEAM_A, "P5-PAGE-C"),
+    ]);
+    const outOfScope = await createOnboarding(ADMIN, TEAM_B, "P5-PAGE-SECRET");
+    type PeoplePage = {
+      items: Array<{ personId: string; displayName: string; status: string }>;
+      page: number;
+      pageSize: number;
+      total: number;
+      totalPages: number;
+    };
+    const page1 = (
+      await asUser<{ value: PeoplePage }>(
+        MANAGER_A,
+        "select public.list_people_page('P5-PAGE',null,1,2) value",
+      )
+    ).rows[0]!.value;
+    const page2 = (
+      await asUser<{ value: PeoplePage }>(
+        MANAGER_A,
+        "select public.list_people_page('P5-PAGE',null,2,2) value",
+      )
+    ).rows[0]!.value;
+    expect(page1).toMatchObject({ page: 1, pageSize: 2, total: 3, totalPages: 2 });
+    expect(page2).toMatchObject({ page: 2, pageSize: 2, total: 3, totalPages: 2 });
+    expect([...page1.items, ...page2.items].map((item) => item.personId)).toEqual(
+      inScope.map((result) => result.rows[0]!.result.personId),
+    );
+    expect(page1.items.map((item) => item.displayName)).toEqual(
+      [...page1.items].map((item) => item.displayName).sort(),
+    );
+
+    const statusPage = (
+      await asUser<{ value: PeoplePage }>(
+        MANAGER_A,
+        "select public.list_people_page('P5-PAGE',$1,1,999) value",
+        [page1.items[0]!.status],
+      )
+    ).rows[0]!.value;
+    expect(statusPage.pageSize).toBe(100);
+    expect(statusPage.items.every((item) => item.status === page1.items[0]!.status)).toBe(true);
+
+    for (const secretSearch of ["P5-PAGE-SECRET", "EMP-P5-PAGE-SECRET", "SECRET@example.test"]) {
+      const hidden = (
+        await asUser<{ value: PeoplePage }>(
+          MANAGER_A,
+          "select public.list_people_page($1,null,1,50) value",
+          [secretSearch],
+        )
+      ).rows[0]!.value;
+      expect(hidden).toMatchObject({ total: 0, totalPages: 1, items: [] });
+    }
+    expect(outOfScope.rows[0]!.result.personId).toBeTruthy();
   });
+
+  it("handles a 500-Person / 200-Case / 1000-Task pilot-scale smoke dataset", async () => {
+    await db.query(
+      `insert into public.persons(
+        first_name,last_name,full_name,given_name,family_name,display_name,email,employee_id,team_id
+      ) select 'P5Large',lpad(n::text,4,'0'),'P5Large '||lpad(n::text,4,'0'),
+        'P5Large',lpad(n::text,4,'0'),'P5Large '||lpad(n::text,4,'0'),
+        'p5-large-'||n||'@example.test','P5-LARGE-'||n,$1
+      from generate_series(1,500) n`,
+      [TEAM_A],
+    );
+    await db.query(
+      `insert into public.employments(
+        person_id,employment_type,employee_id,team_id,role_title,location,start_date,status
+      ) select id,'Employee',employee_id,$1,'Synthetic tester','Zurich','2026-01-01','active'
+        from public.persons where employee_id like 'P5-LARGE-%'`,
+      [TEAM_A],
+    );
+    await db.query(
+      `insert into public.cases(
+        person_id,employment_id,case_type,employment_type,start_date,effective_date,
+        role,location,owner_id,status,priority,notes
+      ) select p.id,e.id,'Onboarding','Employee','2026-01-01','2026-01-01',
+        'Synthetic tester','Zurich',$1,'Preparing','Medium','Phase 5 scale smoke'
+      from public.persons p join public.employments e on e.person_id=p.id
+      where p.employee_id like 'P5-LARGE-%' order by p.employee_id limit 200`,
+      [ADMIN],
+    );
+
+    type ScalePage = { items: unknown[]; total: number; totalPages: number; pageSize: number };
+    const people = (
+      await asUser<{ value: ScalePage }>(
+        ADMIN,
+        "select public.list_people_page('P5-LARGE',null,1,100) value",
+      )
+    ).rows[0]!.value;
+    expect(people).toMatchObject({ total: 500, totalPages: 5, pageSize: 100 });
+    expect(people.items).toHaveLength(100);
+    const counts = await db.query<{ cases: number; tasks: number }>(
+      `select count(distinct c.id)::integer cases,count(t.id)::integer tasks
+       from public.cases c join public.persons p on p.id=c.person_id
+       left join public.tasks t on t.case_id=c.id where p.employee_id like 'P5-LARGE-%'`,
+    );
+    expect(counts.rows[0]!.cases).toBe(200);
+    expect(counts.rows[0]!.tasks).toBeGreaterThanOrEqual(1000);
+    const report = await operationsReport(ADMIN);
+    expect(report.tasks.filter((task) => task.caseId).length).toBeGreaterThanOrEqual(1000);
+  }, 120_000);
 
   it("removes the obsolete email completion RPC from authenticated callers", async () => {
     const privilege = await db.query<{ allowed: boolean }>(
@@ -1844,4 +1976,219 @@ describe("Phase 5 production security audit", () => {
     );
     expect(directory.rows.length).toBeGreaterThan(1);
   });
+
+  it("rejects non-admin direct user-administration bypass attempts", async () => {
+    for (const attacker of [VIEWER, MANAGER_A, IT_USER, ADMIN_TEAM_USER]) {
+      await expect(
+        asUser(attacker, "update public.profiles set status='Inactive' where id=$1", [MANAGER_B]),
+      ).rejects.toThrow();
+      await expect(
+        asUser(attacker, "insert into public.user_roles(user_id,role) values($1,'admin')", [
+          MANAGER_B,
+        ]),
+      ).rejects.toThrow();
+      await expect(
+        asUser(
+          attacker,
+          "insert into public.user_scopes(user_id,scope_type) values($1,'all_organization')",
+          [MANAGER_B],
+        ),
+      ).rejects.toThrow();
+      await expect(
+        asUser(
+          attacker,
+          "insert into public.user_operational_teams(user_id,owner_team) values($1,'HR')",
+          [MANAGER_B],
+        ),
+      ).rejects.toThrow();
+    }
+  });
+
+  it("upgrades a populated Phase 1-4 database without losing historical business evidence", async () => {
+    const upgradeDb = await PGlite.create(undefined, { extensions: { pgcrypto } });
+    const phase5Head = "20260829090000_phase5_production_hardening.sql";
+    const asUpgradeUser = async <T extends Record<string, unknown>>(
+      userId: string,
+      sql: string,
+      params: unknown[] = [],
+    ) => {
+      await upgradeDb.exec("set role authenticated");
+      await upgradeDb.query("select set_config('request.jwt.claim.sub',$1,false)", [userId]);
+      try {
+        return await upgradeDb.query<T>(sql, params);
+      } catch (error) {
+        throw new Error(`Upgrade fixture query failed: ${sql.replace(/\s+/g, " ").trim()}`, {
+          cause: error,
+        });
+      } finally {
+        await upgradeDb.exec("reset role");
+      }
+    };
+
+    try {
+      await bootstrapSupabaseSchemas(upgradeDb);
+      await applyMigrations(upgradeDb, (filename) => filename < phase5Head);
+
+      const onboarding = await asUpgradeUser<{
+        result: { caseId: string; personId: string; employmentId: string };
+      }>(
+        ADMIN,
+        `select public.create_onboarding_case_v2(
+          null,'Upgrade','Fixture',null,'upgrade.fixture@example.test','EMP-UPGRADE',
+          'Employee',$1,'Engineer','Zurich','Supervisor',null,'2026-07-01',100,
+          'Medium','Historical fixture',false
+        ) result`,
+        [TEAM_A],
+      );
+      const ids = onboarding.rows[0]!.result;
+      const tasks = await upgradeDb.query<{ id: string }>(
+        "select id from public.tasks where case_id=$1 order by created_at,id limit 2",
+        [ids.caseId],
+      );
+      const completedTaskId = tasks.rows[0]!.id;
+      const openTaskId = tasks.rows[1]!.id;
+      const completedAt = "2026-07-02T08:30:00.000Z";
+      await upgradeDb.query(
+        `update public.tasks set status='Completed',completed_by=$2,completed_at=$3
+         where id=$1`,
+        [completedTaskId, ADMIN, completedAt],
+      );
+      await upgradeDb.query("update public.tasks set status='In Progress' where id=$1", [
+        openTaskId,
+      ]);
+      await asUpgradeUser(ADMIN, "select public.confirm_joined($1,'2026-07-01')", [ids.caseId]);
+      const offboarding = await asUpgradeUser<{ result: { caseId: string } }>(
+        ADMIN,
+        `select public.create_offboarding_case_v2(
+          $1,$2,'2026-12-31','Voluntary Resignation','Historical reason','Medium','Preserve me'
+        ) result`,
+        [ids.personId, ids.employmentId],
+      );
+      const offboardingCaseId = offboarding.rows[0]!.result.caseId;
+
+      const template = await upgradeDb.query<{ id: string; version: number }>(
+        "select id,version from public.email_templates where status='Published' order by created_at limit 1",
+      );
+      const communication = await upgradeDb.query<{ id: string }>(
+        `insert into public.email_communications(
+          case_id,task_id,template_id,template_version,recipient,rendered_subject,state,prepared_by
+        ) values($1,$2,$3,$4,'upgrade.fixture@example.test','Historical subject','Draft Prepared',$5)
+        returning id`,
+        [ids.caseId, openTaskId, template.rows[0]!.id, template.rows[0]!.version, ADMIN],
+      );
+      const communicationId = communication.rows[0]!.id;
+      const attachment = await upgradeDb.query<{ id: string }>(
+        `insert into public.email_additional_attachments(
+          communication_id,case_id,compose_session_id,filename,storage_path,content_type,size,uploaded_by,expires_at
+        ) values($1,$2,gen_random_uuid(),'Historical.pdf','additional/upgrade-history.pdf',
+          'application/pdf',42,$3,null) returning id`,
+        [communicationId, ids.caseId, ADMIN],
+      );
+      const attachmentId = attachment.rows[0]!.id;
+      const audit = await upgradeDb.query<{ id: string }>(
+        `insert into public.audit_logs(
+          actor_id,entity_type,entity_id,action,case_id,metadata
+        ) values($1,'case',$2,'Upgrade fixture evidence',$3,'{"stable":"preserve"}') returning id`,
+        [ADMIN, ids.caseId, ids.caseId],
+      );
+      const auditId = audit.rows[0]!.id;
+      const checklist = await upgradeDb.query<{ id: string; status: string }>(
+        "select id,status from public.checklist_items where task_id=$1",
+        [completedTaskId],
+      );
+
+      await applyMigrations(upgradeDb, (filename) => filename >= phase5Head);
+
+      const person = await upgradeDb.query<{ display_name: string; employee_id: string }>(
+        "select display_name,employee_id from public.persons where id=$1",
+        [ids.personId],
+      );
+      expect(person.rows[0]).toMatchObject({
+        display_name: "Upgrade Fixture",
+        employee_id: "EMP-UPGRADE",
+      });
+      expect(
+        (
+          await upgradeDb.query("select id from public.employments where id=$1 and person_id=$2", [
+            ids.employmentId,
+            ids.personId,
+          ])
+        ).rowCount,
+      ).toBe(1);
+      expect(
+        (
+          await upgradeDb.query<{ id: string }>(
+            "select id from public.cases where id=any($1::uuid[])",
+            [[ids.caseId, offboardingCaseId]],
+          )
+        ).rows.map((row) => row.id),
+      ).toEqual(expect.arrayContaining([ids.caseId, offboardingCaseId]));
+      const preservedTasks = await upgradeDb.query<{
+        id: string;
+        status: string;
+        completed_by: string | null;
+        completed_at: string | null;
+      }>("select id,status,completed_by,completed_at from public.tasks where id=any($1::uuid[])", [
+        [completedTaskId, openTaskId],
+      ]);
+      expect(preservedTasks.rows).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: completedTaskId,
+            status: "Completed",
+            completed_by: ADMIN,
+          }),
+          expect.objectContaining({ id: openTaskId, status: "In Progress" }),
+        ]),
+      );
+      expect(
+        new Date(preservedTasks.rows.find((row) => row.id === completedTaskId)!.completed_at!),
+      ).toEqual(new Date(completedAt));
+      expect(
+        (
+          await upgradeDb.query("select id,status from public.checklist_items where id=$1", [
+            checklist.rows[0]!.id,
+          ])
+        ).rows[0],
+      ).toEqual(checklist.rows[0]);
+      expect(
+        (
+          await upgradeDb.query(
+            "select template_id,template_version,rendered_subject from public.email_communications where id=$1",
+            [communicationId],
+          )
+        ).rows[0],
+      ).toMatchObject({
+        template_id: template.rows[0]!.id,
+        template_version: template.rows[0]!.version,
+        rendered_subject: "Historical subject",
+      });
+      expect(
+        (
+          await upgradeDb.query(
+            "select communication_id,filename,storage_path from public.email_additional_attachments where id=$1",
+            [attachmentId],
+          )
+        ).rows[0],
+      ).toEqual({
+        communication_id: communicationId,
+        filename: "Historical.pdf",
+        storage_path: "additional/upgrade-history.pdf",
+      });
+      expect(
+        (
+          await upgradeDb.query("select action,metadata from public.audit_logs where id=$1", [
+            auditId,
+          ])
+        ).rows[0],
+      ).toEqual({ action: "Upgrade fixture evidence", metadata: { stable: "preserve" } });
+      await expect(
+        asUpgradeUser(ADMIN, "select public.request_temporary_email_attachment_deletion($1)", [
+          attachmentId,
+        ]),
+      ).rejects.toThrow("Upgrade fixture query failed");
+    } finally {
+      await upgradeDb.close();
+    }
+  }, 120_000);
 });

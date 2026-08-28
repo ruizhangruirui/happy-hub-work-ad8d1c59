@@ -32,9 +32,18 @@ async function fetchIdentity() {
     .eq("id", user.id)
     .maybeSingle();
   if (!profile || profile.status !== "Active") return null;
-  const { data: roleRow } = await supabase.from("user_roles").select("role").eq("user_id", user.id).maybeSingle();
+  const { data: roleRow } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", user.id)
+    .maybeSingle();
   const role = (roleRow?.role as string) ?? "viewer";
-  return { id: user.id, name: profile.name, email: profile.email, role: ROLE_LABEL[role] ?? "Viewer" };
+  return {
+    id: user.id,
+    name: profile.name,
+    email: profile.email,
+    role: ROLE_LABEL[role] ?? "Viewer",
+  };
 }
 
 function AccessDenied() {
@@ -48,7 +57,9 @@ function AccessDenied() {
         </span>
         <h1>{t("Access Pending")}</h1>
         <p className="sub">
-          {t("Your account is not activated in Team Workbench yet. Please contact an administrator to grant access.")}
+          {t(
+            "Your account is not activated in Team Workbench yet. Please contact an administrator to grant access.",
+          )}
         </p>
         <button
           className="primary"
@@ -65,7 +76,10 @@ function AccessDenied() {
 }
 
 function AuthedLayout() {
-  const { data: identity, isLoading } = useQuery({ queryKey: ["identity"], queryFn: fetchIdentity });
+  const { data: identity, isLoading } = useQuery({
+    queryKey: ["identity"],
+    queryFn: fetchIdentity,
+  });
   if (isLoading) return <Loading />;
   if (!identity) return <AccessDenied />;
   return (

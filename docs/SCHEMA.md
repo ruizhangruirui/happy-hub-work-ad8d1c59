@@ -6,20 +6,20 @@ and the authorization decisions.
 
 ## Tables
 
-| Table | Purpose | Key fields |
-| --- | --- | --- |
-| `profiles` | App-facing user record (1:1 with auth user) | `name`, `email`, `title`, `status` |
-| `user_roles` | Role assignment — roles live here, never on profiles | `role` = admin / operator / manager / viewer |
-| `labs` / `teams` | Organization structure | `teams.lab_id` → lab |
-| `user_scopes` | Data visibility scopes per user | `scope_type` = all_organization / lab / team / assigned_cases |
-| `persons` | Employee records (subject of a case) | `full_name`, `email`, `employee_id`, `team_id`, `manager_id` |
-| `cases` | Onboarding / offboarding cases | `case_type`, `status`, `priority`, `owner_id`, `notes`, `supervisor_name`, `supervisor_email` |
-| `case_members` | Direct sharing per case | `access_level` = viewer / collaborator, `revoked_at` |
-| `checklist_items` | Case checklist | `section`, `status`, `owner_id`, `completed_by` |
-| `tasks` | User-assigned tasks, optionally linked to a checklist item | `case_id`, `checklist_item_id`, `owner_id`, `status` |
-| `audit_logs` | Immutable event log | `case_id` (denormalized for visibility checks), `metadata` |
-| `email_templates` | Template library | `subject`, `body`, `variables[]` |
-| `case_files` | File metadata; binaries in private bucket `case-files` | `storage_path` = `<case_id>/<file>` |
+| Table             | Purpose                                                    | Key fields                                                                                    |
+| ----------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `profiles`        | App-facing user record (1:1 with auth user)                | `name`, `email`, `title`, `status`                                                            |
+| `user_roles`      | Role assignment — roles live here, never on profiles       | `role` = admin / operator / manager / viewer                                                  |
+| `labs` / `teams`  | Organization structure                                     | `teams.lab_id` → lab                                                                          |
+| `user_scopes`     | Data visibility scopes per user                            | `scope_type` = all_organization / lab / team / assigned_cases                                 |
+| `persons`         | Employee records (subject of a case)                       | `full_name`, `email`, `employee_id`, `team_id`, `manager_id`                                  |
+| `cases`           | Onboarding / offboarding cases                             | `case_type`, `status`, `priority`, `owner_id`, `notes`, `supervisor_name`, `supervisor_email` |
+| `case_members`    | Direct sharing per case                                    | `access_level` = viewer / collaborator, `revoked_at`                                          |
+| `checklist_items` | Case checklist                                             | `section`, `status`, `owner_id`, `completed_by`                                               |
+| `tasks`           | User-assigned tasks, optionally linked to a checklist item | `case_id`, `checklist_item_id`, `owner_id`, `status`                                          |
+| `audit_logs`      | Immutable event log                                        | `case_id` (denormalized for visibility checks), `metadata`                                    |
+| `email_templates` | Template library                                           | `subject`, `body`, `variables[]`                                                              |
+| `case_files`      | File metadata; binaries in private bucket `case-files`     | `storage_path` = `<case_id>/<file>`                                                           |
 
 ## Authorization model
 

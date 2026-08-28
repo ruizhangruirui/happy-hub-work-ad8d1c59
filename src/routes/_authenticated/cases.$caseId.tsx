@@ -62,6 +62,7 @@ function CaseDetailPage() {
   const { data: wbData } = useQuery({ queryKey: ["workbench"], queryFn: () => fetchWb() });
   const [tab, setTab] = useState(TABS.includes(search.tab ?? "") ? search.tab! : "Overview");
   const [shareOpen, setShareOpen] = useState(false);
+  const [confirmationBusy, setConfirmationBusy] = useState(false);
   const setConfirmation = useServerFn(setCaseConfirmationFn);
 
   if (isLoading) return <Loading />;
@@ -82,6 +83,7 @@ function CaseDetailPage() {
   const refresh = () => qc.invalidateQueries({ queryKey: ["case", caseId] });
   const mandatoryProgress = taskProgressSummary(detail.tasks, true);
   const changeConfirmation = async (confirmed: boolean) => {
+    if (confirmationBusy) return;
     const message = confirmed
       ? c.caseType === "Onboarding"
         ? t(
@@ -94,6 +96,7 @@ function CaseDetailPage() {
           "This reopens only the Case workflow. The Person lifecycle and confirmation history will not change.",
         );
     if (!window.confirm(message)) return;
+    setConfirmationBusy(true);
     try {
       const res = await setConfirmation({ data: { caseId, confirmed } });
       if ("error" in res) {
@@ -116,6 +119,8 @@ function CaseDetailPage() {
       );
     } catch {
       toast.error(t("Something went wrong. Please try again."));
+    } finally {
+      setConfirmationBusy(false);
     }
   };
 
@@ -160,6 +165,7 @@ function CaseDetailPage() {
           {capabilities.canConfirmLifecycle ? (
             <button
               className={c.joinedAt || c.leftAt ? "secondary" : "primary"}
+              disabled={confirmationBusy}
               onClick={() => changeConfirmation(!(c.joinedAt || c.leftAt))}
             >
               <Icon name={c.joinedAt || c.leftAt ? "history" : "check"} />{" "}

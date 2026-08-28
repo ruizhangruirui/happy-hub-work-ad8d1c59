@@ -26,5 +26,8 @@ describe("Windows Outlook Helper safety contract", () => {
     expect(source).toContain("request.Attachments.Count>10");
     expect(source).toContain("request.Attachments.Sum(x=>x.Size)>50*1024*1024");
     expect(source).toContain("CopyLimited(input,output,25*1024*1024)");
+    expect(source).toContain("AllowAutoRedirect=false");
+    expect(source).not.toMatch(/Console\.(WriteLine|Error\.WriteLine).*payload\.(To|Subject|Body)/);
+    expect(source).not.toMatch(/Console\.(WriteLine|Error\.WriteLine).*DownloadUrl/);
   });
 });

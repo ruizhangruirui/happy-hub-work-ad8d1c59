@@ -25,7 +25,15 @@ const NAV = [
   },
 ];
 
-export function Shell({ userName, userRole, children }: { userName: string; userRole: string; children: ReactNode }) {
+export function Shell({
+  userName,
+  userRole,
+  children,
+}: {
+  userName: string;
+  userRole: string;
+  children: ReactNode;
+}) {
   const { lang, setLang, t } = useLang();
   const location = useLocation();
   const navigate = useNavigate();

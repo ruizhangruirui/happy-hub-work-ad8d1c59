@@ -69,7 +69,7 @@ Automated PostgreSQL tests verify search-path pinning and PUBLIC execution revoc
 - Lifecycle, Person identity, Task, template, sharing and email state mutations are auditable.
 - New email audit events store Task/template/version/helper mode, not body, recipient or subject.
 - Application boundaries report failure categories without HR payloads.
-- Historical earlier audit rows may contain subject/recipient metadata created before Phase 5. A separate approved retention decision is required before modifying historical audit evidence.
+- Phase 5 redacts historical email recipient/subject/body keys from audit metadata while retaining the audit event and access-controlled Communication evidence; see the migration data-minimization note below.
 
 ## Known residual risks
 
@@ -78,3 +78,31 @@ Automated PostgreSQL tests verify search-path pinning and PUBLIC execution revoc
 - Production backup/restore must be executed and evidenced by the environment owner.
 - Case/Task report exports intentionally use the already-authorized server response; very large exports should be monitored for memory/time limits.
 - No legal-compliance claims are made by this technical review.
+
+## Final validation status
+
+```text
+Automated security validation: PASS
+Environment validation: PENDING
+Residual risks accepted: controlled-pilot external-link rate-limit risk; browser-generated large exports; 100-record initial Communication History; reviewed High dependency advisories described below
+Blocking risks for PILOT READY: Windows Outlook evidence, environment variable review, backup/Storage recovery evidence, restore drill, maintenance owner and manual browser smoke
+```
+
+### Dependency audit — 28 August 2026
+
+Command: `bun audit --json` with Bun 1.3.14 against the repository's `bun.lock`.
+
+- Critical: **0**.
+- High: **7 advisories**; the audit reported no Critical finding.
+- Direct runtime: `xlsx@0.18.5` reports prototype-pollution and ReDoS advisories. Team Workbench only creates workbooks from already-authorized DTOs and never parses uploaded/untrusted workbooks, so the vulnerable parser path is not exposed in V1. Replacement or an officially patched compatible distribution remains a post-pilot dependency action.
+- Development/build transitive: three `brace-expansion` advisories resolve through ESLint/minimatch; `js-yaml` resolves through ESLint and TanStack build tooling; `nanoid` resolves through PostCSS/Vite. None receives untrusted HR input in the deployed application runtime. Keep build tooling non-public and upgrade through compatible toolchain releases.
+
+No applicable Critical issue is unresolved. High findings are explicitly accepted only for the controlled pilot with the constraints above; they are not approval for unrestricted public rollout.
+
+### External feedback rate-limit decision
+
+Status: **Accepted for controlled pilot**. Links are high entropy, hash-stored, recipient-bound, expiring and disclose only one request. Distribution must remain narrow and monitored. Edge/IP rate limiting is required before unrestricted external rollout.
+
+### Migration data minimization
+
+The Phase 5 migration intentionally removes recipient, subject, body and legacy email-change payload keys from historical `audit_logs.metadata`. Audit row ID, actor, action, entity, Case and timestamp remain. Full Communication evidence stays in the access-controlled communication tables. This is the only intentional historical UPDATE in Phase 5 and is treated as privacy data minimization, not a lifecycle/status rewrite.

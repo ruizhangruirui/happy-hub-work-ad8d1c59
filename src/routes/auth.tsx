@@ -10,7 +10,10 @@ export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
       { title: "Sign In · Team Workbench" },
-      { name: "description", content: "Sign in to Team Workbench — internal onboarding & offboarding operations." },
+      {
+        name: "description",
+        content: "Sign in to Team Workbench — internal onboarding & offboarding operations.",
+      },
     ],
   }),
   component: AuthPage,
@@ -60,13 +63,20 @@ function AuthPage() {
         <span className="brandmark">TW</span>
         <h1>{mode === "signin" ? t("Welcome to Team Workbench") : t("Create an account")}</h1>
         <p className="sub">
-          {mode === "signin" ? t("Sign in with your work email to continue.") : t("Ask an administrator to activate it after signing up.")}
+          {mode === "signin"
+            ? t("Sign in with your work email to continue.")
+            : t("Ask an administrator to activate it after signing up.")}
         </p>
         <form onSubmit={submit}>
           {mode === "signup" ? (
             <label>
               {t("Full Name")}
-              <input value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" />
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                autoComplete="name"
+              />
             </label>
           ) : null}
           <label>
@@ -103,7 +113,9 @@ function AuthPage() {
           </button>
         </div>
         <div className="authswitch">
-          <button onClick={() => setLang(lang === "en" ? "zh" : "en")}>{lang === "en" ? "中文" : "English"}</button>
+          <button onClick={() => setLang(lang === "en" ? "zh" : "en")}>
+            {lang === "en" ? "中文" : "English"}
+          </button>
         </div>
       </div>
     </div>

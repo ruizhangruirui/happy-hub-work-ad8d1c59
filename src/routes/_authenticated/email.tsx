@@ -75,6 +75,7 @@ export function EmailPage() {
   const [opened, setOpened] = useState(false);
   const [composeSessionId, setComposeSessionId] = useState(() => crypto.randomUUID());
   const [outlookMode, setOutlookMode] = useState<"desktop_bridge" | "mailto">("mailto");
+  const [actionBusy, setActionBusy] = useState<"opening" | "sending" | "">("");
   const additionalRef = useRef<AdditionalAttachment[]>([]);
   const taskId = search.taskId ?? "";
   const { data: detailData } = useQuery({
@@ -294,7 +295,8 @@ export function EmailPage() {
   };
 
   const openOutlook = async () => {
-    if (!ready || !template || !compose) return;
+    if (!ready || !template || !compose || actionBusy) return;
+    setActionBusy("opening");
     try {
       const attachmentCount = template.attachments.length + additional.length;
       if (outlookMode === "mailto" && attachmentCount) {
@@ -350,32 +352,41 @@ export function EmailPage() {
       toast.error(
         error instanceof Error ? error.message : t("Something went wrong. Please try again."),
       );
+    } finally {
+      setActionBusy("");
     }
   };
 
   const markSent = async () => {
-    if (!opened || !template || !compose || !communicationId) return;
-    const result = await completeTask({
-      data: {
-        taskId: task?.id,
-        caseId,
-        templateId: template.id,
-        templateVersion: template.version,
-        communicationId,
-        subject: compose.renderedSubject,
-        body: compose.renderedBody,
-        recipient,
-      },
-    });
-    if ("error" in result) toast.error(opErrorMessage(t, result.error));
-    else {
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: ["case", caseId] }),
-        qc.invalidateQueries({ queryKey: ["workbench"] }),
-      ]);
-      toast.success(
-        t(task?.id ? "Email marked as sent and task completed" : "Email marked as sent"),
-      );
+    if (!opened || !template || !compose || !communicationId || actionBusy) return;
+    setActionBusy("sending");
+    try {
+      const result = await completeTask({
+        data: {
+          taskId: task?.id,
+          caseId,
+          templateId: template.id,
+          templateVersion: template.version,
+          communicationId,
+          subject: compose.renderedSubject,
+          body: compose.renderedBody,
+          recipient,
+        },
+      });
+      if ("error" in result) toast.error(opErrorMessage(t, result.error));
+      else {
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: ["case", caseId] }),
+          qc.invalidateQueries({ queryKey: ["workbench"] }),
+        ]);
+        toast.success(
+          t(task?.id ? "Email marked as sent and task completed" : "Email marked as sent"),
+        );
+      }
+    } catch {
+      toast.error(t("Something went wrong. Please try again."));
+    } finally {
+      setActionBusy("");
     }
   };
 
@@ -548,7 +559,11 @@ export function EmailPage() {
           <div className="columnhead">
             <b>3. {t("Review")}</b>
             <div className="actions">
-              <button className="primary" disabled={!ready} onClick={openOutlook}>
+              <button
+                className="primary"
+                disabled={!ready || Boolean(actionBusy)}
+                onClick={openOutlook}
+              >
                 <Icon name="send" /> 4. {t("Open in Outlook")}
               </button>
               <span className={`badge ${outlookMode === "desktop_bridge" ? "b-active" : ""}`}>
@@ -559,7 +574,7 @@ export function EmailPage() {
               </span>
               <button
                 className="successbutton"
-                disabled={!opened || task?.status === "Completed"}
+                disabled={!opened || task?.status === "Completed" || Boolean(actionBusy)}
                 onClick={markSent}
               >
                 <Icon name="check" />{" "}
