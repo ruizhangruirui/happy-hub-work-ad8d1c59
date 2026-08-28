@@ -692,6 +692,39 @@ button { cursor: pointer; }
 
 .event:hover { border-color: #d4dbe9; }
 
+.attentionoverview { margin-top: 22px; }
+
+.attentionlist {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  padding: 0 18px 18px;
+}
+
+.attentionevent {
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  padding: 14px 16px;
+  text-align: left;
+}
+
+.attentioncopy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.attentioncopy small {
+  color: var(--ink-sub);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: normal;
+}
+
+.attentionevent .badge { flex-shrink: 0; }
+
 .date {
   width: 42px;
   border-radius: 9px;
@@ -1837,6 +1870,9 @@ button { cursor: pointer; }
   .globalsearch { display: none; }
   .userform.two { grid-template-columns: 1fr; }
   .fields { grid-template-columns: 1fr; }
+  .attentionlist { padding: 0 14px 14px; }
+  .attentionevent { grid-template-columns: 1fr; gap: 10px; }
+  .attentionevent .badge { justify-self: start; }
   .emailcompose { padding: 6px 16px 18px; }
   .emailreviewhead { flex-direction: column; align-items: stretch; padding: 16px; }
   .emailreviewhead > b { padding-top: 0; }

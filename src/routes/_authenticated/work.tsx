@@ -316,115 +316,44 @@ export function WorkPage() {
       </div>
 
       {overview.reportingMode === "hr" ? (
-        <div className="dashboard threecol">
+        <div className="attentionoverview">
           <OverviewPanel
             title={t("Cases Requiring Attention")}
             count={overview.attentionCases.length}
           >
-            {overview.attentionCases.length ? (
-              overview.attentionCases.map((item) => (
-                <button
-                  className="event"
-                  key={item.caseId}
-                  onClick={() =>
-                    navigate({
-                      to: "/cases/$caseId",
-                      params: { caseId: item.caseId },
-                      search: {
-                        tab: item.taskId ? "Tasks" : "Overview",
-                        taskId: item.taskId ?? "",
-                      },
-                    })
-                  }
-                >
-                  <span>
-                    <b>{item.name}</b>
-                    <small>{t(item.reason)}</small>
-                  </span>
-                  <Badge>{t(item.severity)}</Badge>
-                </button>
-              ))
-            ) : (
-              <div className="inlineempty">{t("No cases require attention.")}</div>
-            )}
-          </OverviewPanel>
-          <OverviewPanel
-            title={t("Upcoming Joiners")}
-            count={overview.upcomingJoiners.length}
-            action={() => navigate({ to: "/onboarding", search: { q: "", new: "" } })}
-          >
-            {overview.upcomingJoiners.map((item) => (
-              <button className="event" key={item.caseId} onClick={() => openCase(item.caseId)}>
-                <span>
-                  <b>{item.name}</b>
-                  <small>
-                    {item.team} · {fmtDate(item.startDate, lang)} · {item.mandatoryCompleted}/
-                    {item.mandatoryTotal}
-                  </small>
-                </span>
-                {item.overdueTasks ? <Badge>{`${item.overdueTasks} overdue`}</Badge> : null}
-              </button>
-            ))}
-          </OverviewPanel>
-          <OverviewPanel
-            title={t("Upcoming Leavers")}
-            count={overview.upcomingLeavers.length}
-            action={() =>
-              navigate({
-                to: "/offboarding",
-                search: { q: "", new: "", personId: "", employmentId: "" },
-              })
-            }
-          >
-            {overview.upcomingLeavers.map((item) => (
-              <button className="event" key={item.caseId} onClick={() => openCase(item.caseId)}>
-                <span>
-                  <b>{item.name}</b>
-                  <small>
-                    LWD:{" "}
-                    {item.lastWorkingDay ? fmtDate(item.lastWorkingDay, lang) : t("Not confirmed")}{" "}
-                    · {t("Contract End")}: {fmtDate(item.contractEndDate, lang)}
-                  </small>
-                </span>
-                <Badge>{item.status}</Badge>
-              </button>
-            ))}
+            <div className="attentionlist">
+              {overview.attentionCases.length ? (
+                overview.attentionCases.map((item) => (
+                  <button
+                    className="event attentionevent"
+                    key={item.caseId}
+                    onClick={() =>
+                      navigate({
+                        to: "/cases/$caseId",
+                        params: { caseId: item.caseId },
+                        search: {
+                          tab: item.taskId ? "Tasks" : "Overview",
+                          taskId: item.taskId ?? "",
+                        },
+                      })
+                    }
+                  >
+                    <span className="attentioncopy">
+                      <b>{item.name}</b>
+                      <small>{t(item.reason)}</small>
+                    </span>
+                    <Badge>{t(item.severity)}</Badge>
+                  </button>
+                ))
+              ) : (
+                <div className="inlineempty">{t("No cases require attention.")}</div>
+              )}
+            </div>
           </OverviewPanel>
         </div>
       ) : null}
 
       <section id="operational-tasks" className="panel" style={{ marginTop: 22 }}>
-        <div className="panelhead">
-          <b>{t("HR / IT / Admin Workload")}</b>
-          <small>{t("Due Soon means due within 14 days")}</small>
-        </div>
-        <div className="casetable">
-          <div className="row head">
-            <span>{t("Owner Team")}</span>
-            <span>{t("Open")}</span>
-            <span>{t("Overdue")}</span>
-            <span>{t("Due Soon")}</span>
-            <span>{t("Unassigned")}</span>
-            <span />
-            <span />
-            <span />
-          </div>
-          {overview.taskWorkload.map((row) => (
-            <div className="row" key={row.ownerTeam}>
-              <b>{t(functionalTeamLabel(row.ownerTeam))}</b>
-              <span>{row.open}</span>
-              <span>{row.overdue}</span>
-              <span>{row.dueSoon}</span>
-              <span>{row.unassigned}</span>
-              <span />
-              <span />
-              <span />
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="panel" style={{ marginTop: 22 }}>
         <div className="panelhead">
           <b>{t("Operational Tasks")}</b>
           {taskView !== "all" ? (
@@ -531,25 +460,17 @@ export function WorkPage() {
 function OverviewPanel({
   title,
   count,
-  action,
   children,
 }: {
   title: string;
   count: number;
-  action?: () => void;
   children: React.ReactNode;
 }) {
-  const { t } = useLang();
   return (
     <section className="panel">
       <div className="panelhead">
         <b>{title}</b>
         <Badge>{String(count)}</Badge>
-        {action ? (
-          <button className="clear" onClick={action}>
-            {t("View All")}
-          </button>
-        ) : null}
       </div>
       {children}
     </section>
