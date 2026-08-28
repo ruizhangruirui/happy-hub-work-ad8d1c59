@@ -65,7 +65,8 @@ export function WorkPage() {
     queryFn: () => fetchWorkbench(),
   });
   const overview = overviewData && !("error" in overviewData) ? overviewData : null;
-  const workbench = workbenchData && !("error" in workbenchData) ? workbenchData : null;
+  const workbench =
+    workbenchData && !("error" in workbenchData) ? (workbenchData as WorkbenchData) : null;
 
   const sortedTasks = useMemo(() => {
     if (!overview) return [];
