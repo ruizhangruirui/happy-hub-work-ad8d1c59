@@ -15,7 +15,7 @@ import {
   saveEmailDraftFn,
 } from "@/lib/workbench.functions";
 import { useWorkbench } from "@/components/workbench/CaseList";
-import type { EmailAttachmentDto, TemplateDto } from "@/lib/types";
+import type { CaseDetailDto, EmailAttachmentDto, TemplateDto } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
 import { opErrorMessage } from "@/lib/errors";
 import { Empty, Icon, Loading } from "@/components/workbench/ui";
@@ -84,7 +84,8 @@ export function EmailPage() {
     enabled: Boolean(caseId),
   });
   const templateResult = templateData && !("error" in templateData) ? templateData : null;
-  const detail = detailData && !("error" in detailData) ? detailData : null;
+  const detail =
+    detailData && !("error" in detailData) ? (detailData as CaseDetailDto) : null;
   const allTemplates: TemplateDto[] = templateResult?.templates ?? [];
   const caseType = detail?.case.caseType.toLowerCase() ?? "";
   const templates = [...allTemplates].sort(

@@ -8,7 +8,11 @@ import {
   getWorkbenchDataFn,
   toggleTaskFn,
 } from "@/lib/workbench.functions";
-import type { OperationsOverviewDto, OperationsTaskReportDto } from "@/lib/types";
+import type {
+  OperationsOverviewDto,
+  OperationsTaskReportDto,
+  WorkbenchData,
+} from "@/lib/types";
 import { useLang } from "@/lib/i18n";
 import { fmtDate, functionalTeamLabel } from "@/lib/format";
 import { businessDate } from "@/lib/domain";
@@ -65,7 +69,8 @@ export function WorkPage() {
     queryFn: () => fetchWorkbench(),
   });
   const overview = overviewData && !("error" in overviewData) ? overviewData : null;
-  const workbench = workbenchData && !("error" in workbenchData) ? workbenchData : null;
+  const workbench =
+    workbenchData && !("error" in workbenchData) ? (workbenchData as WorkbenchData) : null;
 
   const sortedTasks = useMemo(() => {
     if (!overview) return [];
