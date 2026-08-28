@@ -15,7 +15,7 @@ import {
   saveEmailDraftFn,
 } from "@/lib/workbench.functions";
 import { useWorkbench } from "@/components/workbench/CaseList";
-import type { EmailAttachmentDto, TemplateDto } from "@/lib/types";
+import type { CaseDetailDto, EmailAttachmentDto, TemplateDto } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
 import { opErrorMessage } from "@/lib/errors";
 import { Empty, Icon, Loading } from "@/components/workbench/ui";
