@@ -55,7 +55,7 @@ function CaseDetailPage() {
   const qc = useQueryClient();
   const fetchDetail = useServerFn(getCaseDetailFn);
   const fetchWb = useServerFn(getWorkbenchDataFn);
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["case", caseId],
     queryFn: () => fetchDetail({ data: { caseId } }),
   });
@@ -66,11 +66,21 @@ function CaseDetailPage() {
   const setConfirmation = useServerFn(setCaseConfirmationFn);
 
   if (isLoading) return <Loading />;
-  if (!data || "error" in data) {
+  if (isError || !data) {
+    return (
+      <Empty
+        icon="alert"
+        title={t("Something went wrong. Please try again.")}
+        action={t("Try again")}
+        onAction={() => void refetch()}
+      />
+    );
+  }
+  if ("error" in data) {
     return (
       <Empty
         icon="lock"
-        title={t("Case not found or no access.")}
+        title={t(data.error === "not_found" ? "Case not found." : "Case not found or no access.")}
         action={t("Back")}
         onAction={() => navigate({ to: "/onboarding", search: { q: "", new: "" } })}
       />

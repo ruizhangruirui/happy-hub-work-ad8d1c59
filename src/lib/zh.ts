@@ -54,7 +54,7 @@ Object.assign(zh, {
   "Recipient Rules":"收件人规则","No templates yet.":"暂无模板。","All Categories":"全部类别",
   "This person is already shared on the case.":"该成员已在共享列表中。","You don't have permission to do that.":"您没有执行该操作的权限。",
   "Case not found or no access.":"事项不存在或您没有访问权限。","Case not found.":"事项不存在。",
-  "Something went wrong. Please try again.":"出现问题，请重试。","Loading…":"加载中…",
+  "Something went wrong. Please try again.":"出现问题，请重试。","Try again":"重试","Loading…":"加载中…",
   "Due":"到期","today":"今天","overdue":"已逾期",
   "Task":"任务","Optional":"可选","Untitled task":"未命名任务",
   "Shared with you by the case owner":"由事项负责人共享给您",

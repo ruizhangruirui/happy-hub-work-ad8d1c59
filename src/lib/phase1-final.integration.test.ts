@@ -221,6 +221,13 @@ describe("Phase 1 final closure — real PostgreSQL integration", () => {
     expect(result.rows[0]?.migration).toBe("employments");
   });
 
+  it("keeps the Employment schema compatible with the Case Detail query", async () => {
+    const result = await db.query<{ company_email: string | null; workload: number | null }>(
+      "select company_email,workload from public.employments limit 1",
+    );
+    expect(result.rows).toBeDefined();
+  });
+
   it("lets a manager create/read/offboard within their team and rejects another team", async () => {
     const created = await createOnboarding(MANAGER_A, TEAM_A, "AUTH-A");
     const ids = created.rows[0]!.result;
