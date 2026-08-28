@@ -1,8 +1,9 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import {
   assignChecklistOwnerFn,
@@ -30,6 +31,7 @@ import { taskProgressSummary } from "@/lib/domain";
 import { Badge, Empty, Icon, Loading, Modal } from "@/components/workbench/ui";
 
 export const Route = createFileRoute("/_authenticated/cases/$caseId")({
+  validateSearch: z.object({ tab: z.string().optional(), taskId: z.string().optional() }),
   head: () => ({
     meta: [
       { title: "Case Detail · Team Workbench" },
@@ -46,6 +48,7 @@ const TABS = ["Overview", "Tasks", "Workflow", "Checklist", "Communication", "Fi
 
 function CaseDetailPage() {
   const { caseId } = Route.useParams();
+  const search = Route.useSearch();
   const { t, lang } = useLang();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -56,7 +59,7 @@ function CaseDetailPage() {
     queryFn: () => fetchDetail({ data: { caseId } }),
   });
   const { data: wbData } = useQuery({ queryKey: ["workbench"], queryFn: () => fetchWb() });
-  const [tab, setTab] = useState("Overview");
+  const [tab, setTab] = useState(TABS.includes(search.tab ?? "") ? search.tab! : "Overview");
   const [shareOpen, setShareOpen] = useState(false);
   const setConfirmation = useServerFn(setCaseConfirmationFn);
 
@@ -192,6 +195,7 @@ function CaseDetailPage() {
           detail={detail}
           canManageTaskStructure={capabilities.canManageTaskStructure}
           refresh={refresh}
+          targetTaskId={search.taskId}
         />
       ) : null}
       {tab === "Workflow" ? (
@@ -232,10 +236,12 @@ function TasksTab({
   detail,
   canManageTaskStructure,
   refresh,
+  targetTaskId,
 }: {
   detail: CaseDetailDto;
   canManageTaskStructure: boolean;
   refresh: () => void;
+  targetTaskId: string | undefined;
 }) {
   const { t, lang } = useLang();
   const navigate = useNavigate();
@@ -254,6 +260,12 @@ function TasksTab({
     dueDate: "",
     mandatory: true,
   });
+  useEffect(() => {
+    if (!targetTaskId) return;
+    document
+      .getElementById(`task-${targetTaskId}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [targetTaskId]);
   const reload = async () =>
     Promise.all([qc.invalidateQueries({ queryKey: ["workbench"] }), refresh()]);
   const update = async (taskId: string, status: string) => {
@@ -342,7 +354,13 @@ function TasksTab({
                 );
                 return (
                   <div
+                    id={`task-${task.id}`}
                     className={`casetask taskcollab ${task.status === "Completed" ? "done" : ""}`}
+                    style={
+                      task.id === targetTaskId
+                        ? { outline: "3px solid var(--accent, #4968db)", outlineOffset: 2 }
+                        : undefined
+                    }
                     key={task.id}
                   >
                     <div className="taskmain">

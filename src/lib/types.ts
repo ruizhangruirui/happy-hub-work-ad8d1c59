@@ -124,6 +124,7 @@ export interface CaseDto {
 }
 
 export interface OperationsOverviewDto {
+  reportingMode: "hr" | "operational";
   businessDate: string;
   metrics: {
     activePeople: number;
@@ -131,6 +132,8 @@ export interface OperationsOverviewDto {
     leaving: number;
     joinedYtd: number;
     leftYtd: number;
+    openMandatoryTasks: number;
+    overdueMandatoryTasks: number;
   };
   activePeople: Array<{
     personId: string;

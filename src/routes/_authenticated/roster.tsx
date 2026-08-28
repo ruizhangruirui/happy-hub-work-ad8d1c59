@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import { getActiveRosterFn } from "@/lib/workbench.functions";
 import type { RosterPersonDto } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
@@ -68,8 +69,8 @@ function ActiveRosterPage() {
       setAscending(true);
     }
   };
-  const exportRoster = (scope: "view" | "all", format: "csv" | "xlsx") =>
-    exportRows(
+  const exportRoster = (scope: "view" | "all", format: "csv" | "xlsx") => {
+    const result = exportRows(
       (scope === "view" ? filtered : roster).map((x) => ({
         Name: x.name,
         "Employee ID": x.employeeId,
@@ -85,6 +86,8 @@ function ActiveRosterPage() {
       `active-people-${scope}-${businessDate()}`,
       format,
     );
+    if (!result.exported) toast.info(t("No records to export."));
+  };
   if (isLoading) return <Loading />;
   if (data && !Array.isArray(data))
     return <Empty icon="lock" title={t("You don't have permission to do that.")} />;

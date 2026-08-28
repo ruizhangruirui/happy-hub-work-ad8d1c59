@@ -14,13 +14,21 @@ Phase 4 adds a permission-safe operations reporting layer without changing the P
 
 ## Security and data flow
 
-`get_operations_overview(...)` is the server-side aggregate contract. It is `security definer`, but every Case passes `case_access(auth.uid(), case_id)` and operational Tasks come from the existing permission-safe `list_operational_tasks`. The scoped `active_employee_roster` applies the same Case access boundary. Frontend filters cannot broaden access.
+`get_operations_overview(...)` is the server-side aggregate contract. HR reporting requires `is_hr_user` plus `can_manage_case`, so System Role, Functional Team, and Data Scope are all enforced. Generic Viewer/Collaborator Case membership does not grant Operations reporting and cannot contribute to KPIs, distributions, trends, attention, or exports.
+
+The response declares `reportingMode`. HR-authorized users receive people metrics and Case reporting only within their management scope. IT and Administration users receive an `operational` response containing only Tasks for their own functional team and minimum Task context; all people arrays, HR attention, headcount distributions, and lifecycle trends are empty/zero. Viewer and generic Collaborator users without functional membership receive no operational Tasks. `list_operational_tasks` uses the same distinction and no longer treats generic Case access as Task authorization.
 
 The report returns KPIs, upcoming joiners/leavers, deterministic attention reasons, HR/IT/Admin workload (including unassigned work), distributions, a 12-month lifecycle trend, active people, and authorized task export rows.
 
+Onboarding operational date is Start Date. Offboarding operational date is Last Working Day, falling back to Contract End Date. Mixed reports evaluate that expression per Case. Upcoming Joiners and Leavers are limited to today through today + 30 days; a missing-LWD leaver remains visible when Contract End is in that horizon.
+
+Open Mandatory Tasks includes applicable mandatory Tasks in `Not Started`, legacy `Open`, `In Progress`, `Waiting`, or `Blocked`. Overdue Mandatory Tasks adds `due_date < business_date()` and excludes null dates. Due Soon is inclusive from today through today + 14 and cannot overlap overdue.
+
+Task-backed Attention rows link to the Case Tasks tab with `taskId`; Case Detail selects Tasks, scrolls to the Task, and highlights it. Non-Task Attention opens the Case overview.
+
 ## Export controls
 
-Current View exports use the visible filtered/sorted rows; All exports refetch all rows within the caller's authorized scope. CSV and XLSX use UTF-8 data and neutralize cells beginning with `=`, `+`, `-`, `@`, tab, or carriage return to prevent spreadsheet formula execution. Active People exports intentionally omit personal email.
+Current View exports use the visible filtered/sorted rows; All exports refetch all rows within the caller's authorized scope. Empty product exports show `No records to export.` and do not start a download. CSV and XLSX use UTF-8 data and neutralize cells beginning with `=`, `+`, `-`, `@`, tab, or carriage return to prevent spreadsheet formula execution. Active People exports intentionally omit personal email.
 
 ## Performance
 

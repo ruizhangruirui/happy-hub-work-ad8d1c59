@@ -6,6 +6,7 @@ export interface ExportOptions {
   columns?: string[];
   sheetName?: string;
 }
+export type ExportResult = { exported: true } | { exported: false; reason: "empty" };
 
 function safeName(value: string) {
   return (
@@ -51,14 +52,15 @@ export function exportRows(
   name: string,
   format: "csv" | "xlsx",
   options: ExportOptions = {},
-) {
+): ExportResult {
+  if (!rows.length) return { exported: false, reason: "empty" };
   const filename = safeName(name);
   if (format === "csv") {
     download(
       new Blob(["\uFEFF", createCsv(rows, options.columns)], { type: "text/csv;charset=utf-8" }),
       `${filename}.csv`,
     );
-    return;
+    return { exported: true };
   }
   const safeRows = safeExportRows(rows);
   const sheet = safeRows.length
@@ -74,4 +76,5 @@ export function exportRows(
   const book = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(book, sheet, (options.sheetName || "Team Workbench").slice(0, 31));
   XLSX.writeFile(book, `${filename}.xlsx`, { compression: true });
+  return { exported: true };
 }

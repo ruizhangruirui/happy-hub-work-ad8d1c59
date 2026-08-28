@@ -58,6 +58,7 @@ export function WorkPage() {
   const [filters, setFilters] = useState(emptyFilters);
   const [taskSort, setTaskSort] = useState<TaskSort>("dueDate");
   const [taskAscending, setTaskAscending] = useState(true);
+  const [taskView, setTaskView] = useState<"all" | "mandatory" | "overdue-mandatory">("all");
 
   const { data: overviewData, isLoading } = useQuery({
     queryKey: ["operations-overview", filters],
@@ -72,12 +73,21 @@ export function WorkPage() {
 
   const sortedTasks = useMemo(() => {
     if (!overview) return [];
-    return [...overview.tasks].sort(
-      (a, b) =>
-        String(a[taskSort] ?? "9999").localeCompare(String(b[taskSort] ?? "9999")) *
-        (taskAscending ? 1 : -1),
-    );
-  }, [overview, taskAscending, taskSort]);
+    return overview.tasks
+      .filter(
+        (task) =>
+          taskView === "all" ||
+          (task.mandatory &&
+            ["Not Started", "Open", "In Progress", "Waiting", "Blocked"].includes(task.status) &&
+            (taskView === "mandatory" ||
+              Boolean(task.dueDate && task.dueDate < overview.businessDate))),
+      )
+      .sort(
+        (a, b) =>
+          String(a[taskSort] ?? "9999").localeCompare(String(b[taskSort] ?? "9999")) *
+          (taskAscending ? 1 : -1),
+      );
+  }, [overview, taskAscending, taskSort, taskView]);
 
   if (isLoading) return <Loading />;
   if (!overview) return <Empty icon="alert" title={t("Something went wrong. Please try again.")} />;
@@ -86,7 +96,8 @@ export function WorkPage() {
   const statuses = [...new Set(workbench?.cases.map((item) => item.status) ?? [])].sort();
   const updateFilter = (key: keyof typeof filters, value: string) =>
     setFilters((current) => ({ ...current, [key]: value }));
-  const openCase = (caseId: string) => navigate({ to: "/cases/$caseId", params: { caseId } });
+  const openCase = (caseId: string) =>
+    navigate({ to: "/cases/$caseId", params: { caseId }, search: {} });
   const setTaskSortKey = (key: TaskSort) => {
     if (taskSort === key) setTaskAscending((value) => !value);
     else {
@@ -114,7 +125,7 @@ export function WorkPage() {
         : await fetchOverview({ data: emptyFilters }).then((result) =>
             "error" in result ? [] : result.tasks,
           );
-    exportRows(taskExportRows(source), `tasks-${scope}-${businessDate()}`, format, {
+    const result = exportRows(taskExportRows(source), `tasks-${scope}-${businessDate()}`, format, {
       sheetName: "Operational Tasks",
       columns: [
         "Task",
@@ -129,6 +140,7 @@ export function WorkPage() {
         "Completed At",
       ],
     });
+    if (!result.exported) toast.info(t("No records to export."));
   };
   const completeTask = async (id: string) => {
     const result = await toggleTask({ data: { taskId: id, complete: true } });
@@ -145,28 +157,38 @@ export function WorkPage() {
     <div>
       <div className="pagehead">
         <div>
-          <p className="eyebrow">{t("OPERATIONS OVERVIEW")}</p>
-          <h1>{t("What needs attention and what is coming next")}</h1>
+          <p className="eyebrow">
+            {t(overview.reportingMode === "hr" ? "OPERATIONS OVERVIEW" : "OPERATIONAL WORK")}
+          </p>
+          <h1>
+            {t(
+              overview.reportingMode === "hr"
+                ? "What needs attention and what is coming next"
+                : "Your authorized team tasks",
+            )}
+          </h1>
           <p>
             {t("Business date")}: {fmtDate(overview.businessDate, lang)}
           </p>
         </div>
-        <div className="actions">
-          <button
-            className="primary"
-            onClick={() => navigate({ to: "/onboarding", search: { q: "", new: "1" } })}
-          >
-            <Icon name="plus" /> {t("New Onboarding")}
-          </button>
-          <button
-            className="secondary"
-            onClick={() =>
-              navigate({ to: "/email", search: { caseId: "", taskId: "", templateId: "" } })
-            }
-          >
-            <Icon name="mail" /> {t("Compose Email")}
-          </button>
-        </div>
+        {overview.reportingMode === "hr" ? (
+          <div className="actions">
+            <button
+              className="primary"
+              onClick={() => navigate({ to: "/onboarding", search: { q: "", new: "1" } })}
+            >
+              <Icon name="plus" /> {t("New Onboarding")}
+            </button>
+            <button
+              className="secondary"
+              onClick={() =>
+                navigate({ to: "/email", search: { caseId: "", taskId: "", templateId: "" } })
+              }
+            >
+              <Icon name="mail" /> {t("Compose Email")}
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div className="filterbar">
@@ -202,18 +224,38 @@ export function WorkPage() {
             <option key={status}>{status}</option>
           ))}
         </select>
-        <input
-          type="date"
-          aria-label={t("Date From")}
-          value={filters.dateFrom}
-          onChange={(event) => updateFilter("dateFrom", event.target.value)}
-        />
-        <input
-          type="date"
-          aria-label={t("Date To")}
-          value={filters.dateTo}
-          onChange={(event) => updateFilter("dateTo", event.target.value)}
-        />
+        <label>
+          <span>
+            {t(
+              filters.caseType === "Onboarding"
+                ? "Start Date From"
+                : filters.caseType === "Offboarding"
+                  ? "Leaving Date From"
+                  : "Operational Date From",
+            )}
+          </span>
+          <input
+            type="date"
+            value={filters.dateFrom}
+            onChange={(event) => updateFilter("dateFrom", event.target.value)}
+          />
+        </label>
+        <label>
+          <span>
+            {t(
+              filters.caseType === "Onboarding"
+                ? "Start Date To"
+                : filters.caseType === "Offboarding"
+                  ? "Leaving Date To"
+                  : "Operational Date To",
+            )}
+          </span>
+          <input
+            type="date"
+            value={filters.dateTo}
+            onChange={(event) => updateFilter("dateTo", event.target.value)}
+          />
+        </label>
         {Object.values(filters).some(Boolean) ? (
           <button className="clear" onClick={() => setFilters(emptyFilters)}>
             <Icon name="x" /> {t("Clear")}
@@ -222,72 +264,118 @@ export function WorkPage() {
       </div>
 
       <div className="rosterstats">
-        {(
-          [
-            ["Active People", overview.metrics.activePeople],
-            ["Pre-boarding", overview.metrics.preboarding],
-            ["Leaving", overview.metrics.leaving],
-            ["Joined YTD", overview.metrics.joinedYtd],
-            ["Left YTD", overview.metrics.leftYtd],
-          ] as const
+        {(overview.reportingMode === "hr"
+          ? ([
+              ["Active People", overview.metrics.activePeople],
+              ["Pre-boarding", overview.metrics.preboarding],
+              ["Leaving", overview.metrics.leaving],
+              ["Joined YTD", overview.metrics.joinedYtd],
+              ["Left YTD", overview.metrics.leftYtd],
+              ["Open Mandatory Tasks", overview.metrics.openMandatoryTasks],
+              ["Overdue Mandatory Tasks", overview.metrics.overdueMandatoryTasks],
+            ] as const)
+          : ([
+              ["Open Mandatory Tasks", overview.metrics.openMandatoryTasks],
+              ["Overdue Mandatory Tasks", overview.metrics.overdueMandatoryTasks],
+            ] as const)
         ).map(([label, value]) => (
-          <div className="statcard" key={label}>
+          <button
+            className="statcard"
+            key={label}
+            onClick={() => {
+              if (label === "Open Mandatory Tasks") setTaskView("mandatory");
+              if (label === "Overdue Mandatory Tasks") setTaskView("overdue-mandatory");
+              if (label.includes("Mandatory"))
+                document
+                  .getElementById("operational-tasks")
+                  ?.scrollIntoView({ behavior: "smooth" });
+            }}
+          >
             <span>{t(label)}</span>
             <strong>{value}</strong>
-          </div>
+          </button>
         ))}
       </div>
 
-      <div className="dashboard threecol">
-        <OverviewPanel
-          title={t("Cases Requiring Attention")}
-          count={overview.attentionCases.length}
-        >
-          {overview.attentionCases.length ? (
-            overview.attentionCases.map((item) => (
+      {overview.reportingMode === "hr" ? (
+        <div className="dashboard threecol">
+          <OverviewPanel
+            title={t("Cases Requiring Attention")}
+            count={overview.attentionCases.length}
+          >
+            {overview.attentionCases.length ? (
+              overview.attentionCases.map((item) => (
+                <button
+                  className="event"
+                  key={item.caseId}
+                  onClick={() =>
+                    navigate({
+                      to: "/cases/$caseId",
+                      params: { caseId: item.caseId },
+                      search: {
+                        tab: item.taskId ? "Tasks" : "Overview",
+                        taskId: item.taskId ?? "",
+                      },
+                    })
+                  }
+                >
+                  <span>
+                    <b>{item.name}</b>
+                    <small>{t(item.reason)}</small>
+                  </span>
+                  <Badge>{t(item.severity)}</Badge>
+                </button>
+              ))
+            ) : (
+              <div className="inlineempty">{t("No cases require attention.")}</div>
+            )}
+          </OverviewPanel>
+          <OverviewPanel
+            title={t("Upcoming Joiners")}
+            count={overview.upcomingJoiners.length}
+            action={() => navigate({ to: "/onboarding", search: { q: "", new: "" } })}
+          >
+            {overview.upcomingJoiners.map((item) => (
               <button className="event" key={item.caseId} onClick={() => openCase(item.caseId)}>
                 <span>
                   <b>{item.name}</b>
-                  <small>{t(item.reason)}</small>
+                  <small>
+                    {item.team} · {fmtDate(item.startDate, lang)} · {item.mandatoryCompleted}/
+                    {item.mandatoryTotal}
+                  </small>
                 </span>
-                <Badge>{t(item.severity)}</Badge>
+                {item.overdueTasks ? <Badge>{`${item.overdueTasks} overdue`}</Badge> : null}
               </button>
-            ))
-          ) : (
-            <div className="inlineempty">{t("No cases require attention.")}</div>
-          )}
-        </OverviewPanel>
-        <OverviewPanel title={t("Upcoming Joiners")} count={overview.upcomingJoiners.length}>
-          {overview.upcomingJoiners.map((item) => (
-            <button className="event" key={item.caseId} onClick={() => openCase(item.caseId)}>
-              <span>
-                <b>{item.name}</b>
-                <small>
-                  {item.team} · {fmtDate(item.startDate, lang)} · {item.mandatoryCompleted}/
-                  {item.mandatoryTotal}
-                </small>
-              </span>
-              {item.overdueTasks ? <Badge>{`${item.overdueTasks} overdue`}</Badge> : null}
-            </button>
-          ))}
-        </OverviewPanel>
-        <OverviewPanel title={t("Upcoming Leavers")} count={overview.upcomingLeavers.length}>
-          {overview.upcomingLeavers.map((item) => (
-            <button className="event" key={item.caseId} onClick={() => openCase(item.caseId)}>
-              <span>
-                <b>{item.name}</b>
-                <small>
-                  LWD: {fmtDate(item.lastWorkingDay, lang)} · {t("Contract End")}:{" "}
-                  {fmtDate(item.contractEndDate, lang)}
-                </small>
-              </span>
-              <Badge>{item.status}</Badge>
-            </button>
-          ))}
-        </OverviewPanel>
-      </div>
+            ))}
+          </OverviewPanel>
+          <OverviewPanel
+            title={t("Upcoming Leavers")}
+            count={overview.upcomingLeavers.length}
+            action={() =>
+              navigate({
+                to: "/offboarding",
+                search: { q: "", new: "", personId: "", employmentId: "" },
+              })
+            }
+          >
+            {overview.upcomingLeavers.map((item) => (
+              <button className="event" key={item.caseId} onClick={() => openCase(item.caseId)}>
+                <span>
+                  <b>{item.name}</b>
+                  <small>
+                    LWD:{" "}
+                    {item.lastWorkingDay ? fmtDate(item.lastWorkingDay, lang) : t("Not confirmed")}{" "}
+                    · {t("Contract End")}: {fmtDate(item.contractEndDate, lang)}
+                  </small>
+                </span>
+                <Badge>{item.status}</Badge>
+              </button>
+            ))}
+          </OverviewPanel>
+        </div>
+      ) : null}
 
-      <section className="panel" style={{ marginTop: 22 }}>
+      <section id="operational-tasks" className="panel" style={{ marginTop: 22 }}>
         <div className="panelhead">
           <b>{t("HR / IT / Admin Workload")}</b>
           <small>{t("Due Soon means due within 14 days")}</small>
@@ -318,40 +406,49 @@ export function WorkPage() {
         </div>
       </section>
 
-      <div className="dashboard analyticsgrid">
-        <DistributionChart
-          title={t("Active People by Employment Type")}
-          data={overview.activeByEmploymentType}
-          color="#4968db"
-        />
-        <DistributionChart
-          title={t("Active People by Team")}
-          data={overview.activeByTeam}
-          color="#4f9b78"
-        />
-      </div>
-      <section className="panel" style={{ marginTop: 22 }}>
-        <div className="panelhead">
-          <b>{t("Join / Leave Trend")}</b>
+      {overview.reportingMode === "hr" ? (
+        <div className="dashboard analyticsgrid">
+          <DistributionChart
+            title={t("Active People by Employment Type")}
+            data={overview.activeByEmploymentType}
+            color="#4968db"
+          />
+          <DistributionChart
+            title={t("Active People by Team")}
+            data={overview.activeByTeam}
+            color="#4f9b78"
+          />
         </div>
-        <div style={{ height: 260 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={overview.monthlyLifecycleTrend}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="month" />
-              <YAxis allowDecimals={false} />
-              <Tooltip />
-              <Legend />
-              <Line dataKey="joined" stroke="#4968db" />
-              <Line dataKey="left" stroke="#d56a63" />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </section>
+      ) : null}
+      {overview.reportingMode === "hr" ? (
+        <section className="panel" style={{ marginTop: 22 }}>
+          <div className="panelhead">
+            <b>{t("Join / Leave Trend")}</b>
+          </div>
+          <div style={{ height: 260 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={overview.monthlyLifecycleTrend}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis allowDecimals={false} />
+                <Tooltip />
+                <Legend />
+                <Line dataKey="joined" stroke="#4968db" />
+                <Line dataKey="left" stroke="#d56a63" />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+      ) : null}
 
       <section className="panel" style={{ marginTop: 22 }}>
         <div className="panelhead">
           <b>{t("Operational Tasks")}</b>
+          {taskView !== "all" ? (
+            <button className="clear" onClick={() => setTaskView("all")}>
+              <Icon name="x" /> {t("Clear Task View")}
+            </button>
+          ) : null}
           <div className="actions">
             <button className="secondary" onClick={() => void exportTasks("current-view", "csv")}>
               {t("Export Current View")} CSV
@@ -450,17 +547,25 @@ export function WorkPage() {
 function OverviewPanel({
   title,
   count,
+  action,
   children,
 }: {
   title: string;
   count: number;
+  action?: () => void;
   children: React.ReactNode;
 }) {
+  const { t } = useLang();
   return (
     <section className="panel">
       <div className="panelhead">
         <b>{title}</b>
         <Badge>{String(count)}</Badge>
+        {action ? (
+          <button className="clear" onClick={action}>
+            {t("View All")}
+          </button>
+        ) : null}
       </div>
       {children}
     </section>

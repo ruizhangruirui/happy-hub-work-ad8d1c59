@@ -105,6 +105,9 @@ async function seedManagerB() {
     "insert into public.user_scopes(user_id,scope_type,team_id) values($1,'team',$2)",
     [MANAGER_B, TEAM_B],
   );
+  await db.query("insert into public.user_operational_teams(user_id,owner_team) values($1,'HR')", [
+    MANAGER_B,
+  ]);
 }
 
 async function seedFunctionalUser(id: string, email: string, ownerTeam: "IT" | "Admin") {
@@ -146,6 +149,53 @@ async function createOnboarding(
       teamId,
     ],
   );
+}
+
+type OperationsReport = {
+  reportingMode: "hr" | "operational";
+  metrics: {
+    activePeople: number;
+    preboarding: number;
+    leaving: number;
+    joinedYtd: number;
+    leftYtd: number;
+    openMandatoryTasks: number;
+    overdueMandatoryTasks: number;
+  };
+  activePeople: Array<{ caseId: string; team: string }>;
+  upcomingJoiners: Array<{ caseId: string }>;
+  upcomingLeavers: Array<{
+    caseId: string;
+    lastWorkingDay: string | null;
+    contractEndDate: string | null;
+  }>;
+  attentionCases: Array<{
+    caseId: string;
+    taskId: string | null;
+    severity: string;
+    reason: string;
+  }>;
+  taskWorkload: Array<{
+    ownerTeam: string;
+    open: number;
+    overdue: number;
+    dueSoon: number;
+    unassigned: number;
+  }>;
+  activeByTeam: Array<{ name: string; value: number }>;
+  monthlyLifecycleTrend: Array<{ joined: number; left: number }>;
+  tasks: Array<{ id: string; caseId: string; ownerTeam: string; status: string }>;
+};
+
+async function operationsReport(userId: string, args: unknown[] = []) {
+  const placeholders = args.length ? "$1,$2,$3,$4,$5,$6" : "";
+  return (
+    await asUser<{ report: OperationsReport }>(
+      userId,
+      `select public.get_operations_overview(${placeholders}) report`,
+      args,
+    )
+  ).rows[0]!.report;
 }
 
 beforeAll(async () => {
@@ -1183,27 +1233,300 @@ describe("Phase 3 Email Center — PostgreSQL security and history", () => {
     );
     expect(state.rows[0]).toEqual({ status: "Completed", completed_by: ADMIN });
   });
+});
 
+describe("Phase 4 Closure — permission-safe Operations reporting", () => {
   it("builds the Phase 4 operations report and keeps scoped managers isolated", async () => {
-    type Report = { tasks: Array<{ caseId: string }>; taskWorkload: unknown[] };
-    const teamA = await createOnboarding(ADMIN, TEAM_A, "P4-SCOPE-A");
-    const teamB = await createOnboarding(ADMIN, TEAM_B, "P4-SCOPE-B");
-    const reportA = await asUser<{ report: Report }>(
-      MANAGER_A,
-      "select public.get_operations_overview() report",
-    );
-    const reportB = await asUser<{ report: Report }>(
-      MANAGER_B,
-      "select public.get_operations_overview() report",
-    );
+    const teamA = await createOnboarding(MANAGER_A, TEAM_A, "P4-SCOPE-A");
+    const teamB = await createOnboarding(MANAGER_B, TEAM_B, "P4-SCOPE-B");
+    const reportA = await operationsReport(MANAGER_A);
+    const reportB = await operationsReport(MANAGER_B);
     const caseA = teamA.rows[0]!.result.caseId;
     const caseB = teamB.rows[0]!.result.caseId;
-    const visibleA = reportA.rows[0]!.report.tasks.map((row) => row.caseId);
-    const visibleB = reportB.rows[0]!.report.tasks.map((row) => row.caseId);
+    const visibleA = reportA.tasks.map((row) => row.caseId);
+    const visibleB = reportB.tasks.map((row) => row.caseId);
     expect(visibleA).toContain(caseA);
     expect(visibleA).not.toContain(caseB);
     expect(visibleB).toContain(caseB);
     expect(visibleB).not.toContain(caseA);
-    expect(reportA.rows[0]!.report.taskWorkload).toHaveLength(3);
+    expect(reportA.taskWorkload).toHaveLength(3);
+    expect(reportA.activeByTeam.every((row) => row.name !== "Team B")).toBe(true);
+    const forbidden = await operationsReport(MANAGER_A, ["Team B", null, null, null, null, null]);
+    expect(forbidden.metrics.activePeople).toBe(0);
+    expect(forbidden.metrics.preboarding).toBe(0);
+    expect(forbidden.tasks).toHaveLength(0);
+    expect(forbidden.activeByTeam).toHaveLength(0);
+    expect(forbidden.monthlyLifecycleTrend.every((row) => row.joined === 0 && row.left === 0)).toBe(
+      true,
+    );
+  });
+
+  it("does not turn Viewer or generic Collaborator Case sharing into Operations access", async () => {
+    const created = await createOnboarding(ADMIN, TEAM_A, "P4-SHARED");
+    const caseId = created.rows[0]!.result.caseId;
+    await db.query(
+      "insert into public.case_members(case_id,user_id,access_level,created_by) values($1,$2,'viewer',$3)",
+      [caseId, VIEWER, ADMIN],
+    );
+    for (const access of ["viewer", "collaborator"]) {
+      await db.query(
+        "update public.case_members set access_level=$1 where case_id=$2 and user_id=$3",
+        [access, caseId, VIEWER],
+      );
+      const report = await operationsReport(VIEWER);
+      expect(report.reportingMode).toBe("operational");
+      expect(report.metrics.activePeople).toBe(0);
+      expect(report.metrics.preboarding).toBe(0);
+      expect(report.activePeople).toHaveLength(0);
+      expect(report.activeByTeam).toHaveLength(0);
+      expect(report.attentionCases).toHaveLength(0);
+      expect(report.tasks).toHaveLength(0);
+      expect(report.monthlyLifecycleTrend.every((row) => row.joined === 0 && row.left === 0)).toBe(
+        true,
+      );
+      expect(
+        (await asUser(VIEWER, "select person_id from public.active_employee_roster")).rows,
+      ).toHaveLength(0);
+    }
+  });
+
+  it("returns only functional-team operational reporting to IT and Administration", async () => {
+    const it = await operationsReport(IT_USER);
+    const administration = await operationsReport(ADMIN_TEAM_USER);
+    for (const [report, team] of [
+      [it, "IT"],
+      [administration, "Admin"],
+    ] as const) {
+      expect(report.reportingMode).toBe("operational");
+      expect(report.metrics.activePeople).toBe(0);
+      expect(report.activePeople).toHaveLength(0);
+      expect(report.activeByTeam).toHaveLength(0);
+      expect(report.attentionCases).toHaveLength(0);
+      expect(report.tasks.length).toBeGreaterThan(0);
+      expect(report.tasks.every((task) => task.ownerTeam === team)).toBe(true);
+      expect(report.taskWorkload.map((row) => row.ownerTeam)).toEqual([team]);
+      expect(
+        (
+          await asUser(
+            team === "IT" ? IT_USER : ADMIN_TEAM_USER,
+            "select person_id from public.active_employee_roster",
+          )
+        ).rows,
+      ).toHaveLength(0);
+    }
+  });
+
+  it("uses the operational Case date and a 30-day Upcoming horizon", async () => {
+    const onboarding = await createOnboarding(ADMIN, TEAM_A, "P4-DATE-ON");
+    await db.query("update public.cases set start_date='2026-09-15' where id=$1", [
+      onboarding.rows[0]!.result.caseId,
+    ]);
+    const employment = await createOnboarding(ADMIN, TEAM_A, "P4-DATE-OFF");
+    await asUser(ADMIN, "select public.confirm_joined($1,'2026-08-01')", [
+      employment.rows[0]!.result.caseId,
+    ]);
+    const offboarding = await asUser<{ result: { caseId: string } }>(
+      ADMIN,
+      "select public.create_offboarding_case_v2($1,$2,'2026-09-30','Voluntary Resignation',null,'Medium',null) result",
+      [employment.rows[0]!.result.personId, employment.rows[0]!.result.employmentId],
+    );
+    await db.query(
+      "update public.cases set start_date='2024-01-01',last_working_day='2026-09-20' where id=$1",
+      [offboarding.rows[0]!.result.caseId],
+    );
+    const september = await operationsReport(ADMIN, [
+      null,
+      null,
+      null,
+      null,
+      "2026-09-01",
+      "2026-09-30",
+    ]);
+    const septemberCases = new Set(september.tasks.map((task) => task.caseId));
+    expect(septemberCases.has(onboarding.rows[0]!.result.caseId)).toBe(true);
+    expect(septemberCases.has(offboarding.rows[0]!.result.caseId)).toBe(true);
+
+    const today = (await db.query<{ today: string }>("select public.business_date()::text today"))
+      .rows[0]!.today;
+    const horizonCases = [] as string[];
+    for (const [suffix, offset] of [
+      ["IN15", 15],
+      ["OUT31", 31],
+    ] as const) {
+      const row = await createOnboarding(ADMIN, TEAM_A, `P4-${suffix}`);
+      await db.query("update public.cases set start_date=$2::date+$3::integer where id=$1", [
+        row.rows[0]!.result.caseId,
+        today,
+        offset,
+      ]);
+      horizonCases.push(row.rows[0]!.result.caseId);
+    }
+    const upcoming = await operationsReport(ADMIN);
+    const upcomingIds = upcoming.upcomingJoiners.map((row) => row.caseId);
+    expect(upcomingIds).toContain(horizonCases[0]);
+    expect(upcomingIds).not.toContain(horizonCases[1]);
+
+    const leaverCases: string[] = [];
+    for (const [suffix, offset, hasLwd] of [
+      ["LWD10", 7, true],
+      ["LWD40", 40, true],
+      ["END20", 20, false],
+      ["END45", 45, false],
+    ] as const) {
+      const joined = await createOnboarding(ADMIN, TEAM_A, `P4-${suffix}`);
+      await asUser(ADMIN, "select public.confirm_joined($1,null)", [joined.rows[0]!.result.caseId]);
+      const leaving = await asUser<{ result: { caseId: string } }>(
+        ADMIN,
+        "select public.create_offboarding_case_v2($1,$2,'2026-12-31','Voluntary Resignation',null,'Medium',null) result",
+        [joined.rows[0]!.result.personId, joined.rows[0]!.result.employmentId],
+      );
+      await db.query(
+        "update public.cases set contract_end_date=$2::date+$3::integer,last_working_day=case when $4::boolean then $2::date+$3::integer else null end where id=$1",
+        [leaving.rows[0]!.result.caseId, today, offset, hasLwd],
+      );
+      if (suffix === "LWD10") {
+        await db.query("update public.tasks set status='Completed' where case_id=$1", [
+          leaving.rows[0]!.result.caseId,
+        ]);
+        await db.query(
+          "update public.tasks set status='Not Started',due_date=$2::date+1 where id=(select id from public.tasks where case_id=$1 and owner_team='IT' limit 1)",
+          [leaving.rows[0]!.result.caseId, today],
+        );
+      }
+      leaverCases.push(leaving.rows[0]!.result.caseId);
+    }
+    const leavers = (await operationsReport(ADMIN)).upcomingLeavers;
+    const leaverIds = leavers.map((row) => row.caseId);
+    expect(leaverIds).toContain(leaverCases[0]);
+    expect(leaverIds).not.toContain(leaverCases[1]);
+    expect(leaverIds).toContain(leaverCases[2]);
+    expect(leaverIds).not.toContain(leaverCases[3]);
+    expect(leavers.find((row) => row.caseId === leaverCases[2])).toMatchObject({
+      lastWorkingDay: null,
+    });
+    const horizonAttention = (await operationsReport(ADMIN)).attentionCases;
+    expect(horizonAttention).toContainEqual(
+      expect.objectContaining({
+        caseId: leaverCases[2],
+        severity: "Warning",
+        reason: "Last Working Day not confirmed",
+      }),
+    );
+    expect(horizonAttention).toContainEqual(
+      expect.objectContaining({
+        caseId: leaverCases[0],
+        severity: "Critical",
+        reason: "LWD approaching with IT/Admin work unresolved",
+      }),
+    );
+    expect(horizonAttention.some((item) => item.caseId === horizonCases[1])).toBe(false);
+  });
+
+  it("counts only applicable outstanding mandatory Tasks and keeps due-soon disjoint", async () => {
+    const created = await createOnboarding(ADMIN, TEAM_A, "P4-KPI");
+    const caseId = created.rows[0]!.result.caseId;
+    await db.query("delete from public.tasks where case_id=$1", [caseId]);
+    const baseline = await operationsReport(ADMIN);
+    await db.query(
+      `insert into public.tasks(case_id,title,status,mandatory,due_date,owner_team,owner_id) values
+       ($1,'Completed old','Completed',true,public.business_date()-1,'HR',$2),
+       ($1,'N/A old','Not Applicable',true,public.business_date()-1,'HR',$2),
+       ($1,'Mandatory overdue','Not Started',true,public.business_date()-1,'HR',null),
+       ($1,'Mandatory due soon','In Progress',true,public.business_date()+14,'IT',null),
+       ($1,'Optional overdue','Not Started',false,public.business_date()-1,'Admin',null),
+       ($1,'Waiting for LWD','Waiting',true,null,'Admin',null)`,
+      [caseId, ADMIN],
+    );
+    const report = await operationsReport(ADMIN, [null, null, null, null, null, null]);
+    const caseTasks = report.tasks.filter((task) => task.caseId === caseId);
+    expect(caseTasks).toHaveLength(6);
+    const expectedOpenMandatory =
+      caseTasks.filter((task) =>
+        ["Not Started", "Open", "In Progress", "Waiting", "Blocked"].includes(task.status),
+      ).length - 1;
+    expect(expectedOpenMandatory).toBe(3);
+    expect(report.metrics.openMandatoryTasks - baseline.metrics.openMandatoryTasks).toBe(3);
+    expect(report.metrics.overdueMandatoryTasks - baseline.metrics.overdueMandatoryTasks).toBe(1);
+    const workloadDelta = (team: string, field: "open" | "overdue" | "dueSoon" | "unassigned") =>
+      (report.taskWorkload.find((row) => row.ownerTeam === team)?.[field] ?? 0) -
+      (baseline.taskWorkload.find((row) => row.ownerTeam === team)?.[field] ?? 0);
+    expect(workloadDelta("HR", "open")).toBe(1);
+    expect(workloadDelta("HR", "overdue")).toBe(1);
+    expect(workloadDelta("HR", "unassigned")).toBe(1);
+    expect(workloadDelta("IT", "dueSoon")).toBe(1);
+    expect(workloadDelta("Admin", "open")).toBe(2);
+    expect(workloadDelta("Admin", "overdue")).toBe(1);
+    expect(workloadDelta("Admin", "dueSoon")).toBe(0);
+    const attention = report.attentionCases.filter((item) => item.caseId === caseId);
+    expect(attention).toContainEqual(
+      expect.objectContaining({ severity: "Critical", reason: "Mandatory task overdue" }),
+    );
+    expect(attention.some((item) => item.reason.includes("Not Applicable"))).toBe(false);
+  });
+
+  it("moves lifecycle reporting only on Confirm Joined and Confirm Left", async () => {
+    const before = await operationsReport(ADMIN);
+    const created = await createOnboarding(ADMIN, TEAM_A, "P4-LIFECYCLE");
+    const preboarding = await operationsReport(ADMIN);
+    expect(preboarding.metrics.preboarding - before.metrics.preboarding).toBe(1);
+    expect(preboarding.metrics.activePeople - before.metrics.activePeople).toBe(0);
+
+    await asUser(ADMIN, "select public.confirm_joined($1,null)", [created.rows[0]!.result.caseId]);
+    const joined = await operationsReport(ADMIN);
+    expect(joined.metrics.preboarding - before.metrics.preboarding).toBe(0);
+    expect(joined.metrics.activePeople - before.metrics.activePeople).toBe(1);
+    expect(joined.metrics.joinedYtd - before.metrics.joinedYtd).toBe(1);
+
+    const leaving = await asUser<{ result: { caseId: string } }>(
+      ADMIN,
+      "select public.create_offboarding_case_v2($1,$2,'2026-12-31','Voluntary Resignation',null,'Medium',null) result",
+      [created.rows[0]!.result.personId, created.rows[0]!.result.employmentId],
+    );
+    const pendingLeft = await operationsReport(ADMIN);
+    expect(pendingLeft.metrics.activePeople - before.metrics.activePeople).toBe(1);
+    expect(pendingLeft.metrics.leaving - joined.metrics.leaving).toBe(1);
+
+    await asUser(ADMIN, "select public.confirm_left($1,null)", [leaving.rows[0]!.result.caseId]);
+    const left = await operationsReport(ADMIN);
+    expect(left.metrics.activePeople - before.metrics.activePeople).toBe(0);
+    expect(left.metrics.leaving - joined.metrics.leaving).toBe(0);
+    expect(left.metrics.leftYtd - before.metrics.leftYtd).toBe(1);
+  });
+
+  it("uses explicit business-year boundaries for Joined and Left YTD", async () => {
+    const baseline = await operationsReport(ADMIN);
+    for (const [suffix, date] of [
+      ["JOIN-LAST", "2025-12-31"],
+      ["JOIN-THIS", "2026-01-01"],
+    ] as const) {
+      const row = await createOnboarding(ADMIN, TEAM_A, `P4-${suffix}`);
+      await asUser(ADMIN, "select public.confirm_joined($1,$2::date)", [
+        row.rows[0]!.result.caseId,
+        date,
+      ]);
+    }
+    const joined = await operationsReport(ADMIN);
+    expect(joined.metrics.joinedYtd - baseline.metrics.joinedYtd).toBe(1);
+
+    for (const [suffix, date] of [
+      ["LEFT-LAST", "2025-12-31"],
+      ["LEFT-THIS", "2026-01-01"],
+    ] as const) {
+      const row = await createOnboarding(ADMIN, TEAM_A, `P4-${suffix}`);
+      await asUser(ADMIN, "select public.confirm_joined($1,'2025-01-01')", [
+        row.rows[0]!.result.caseId,
+      ]);
+      const offboarding = await asUser<{ result: { caseId: string } }>(
+        ADMIN,
+        "select public.create_offboarding_case_v2($1,$2,'2026-12-31','Voluntary Resignation',null,'Medium',null) result",
+        [row.rows[0]!.result.personId, row.rows[0]!.result.employmentId],
+      );
+      await asUser(ADMIN, "select public.confirm_left($1,$2::date)", [
+        offboarding.rows[0]!.result.caseId,
+        date,
+      ]);
+    }
+    const left = await operationsReport(ADMIN);
+    expect(left.metrics.leftYtd - baseline.metrics.leftYtd).toBe(1);
   });
 });

@@ -91,7 +91,7 @@ export function CaseList({ caseType }: { caseType: "onboarding" | "offboarding" 
   const exportCases = (scope: "view" | "all", format: "csv" | "xlsx") => {
     const source =
       scope === "view" ? filtered : wb.cases.filter((c) => c.caseType.toLowerCase() === caseType);
-    exportRows(
+    const result = exportRows(
       source.map((c) => ({
         Person: c.name,
         "Employment Type": c.employmentType,
@@ -106,6 +106,7 @@ export function CaseList({ caseType }: { caseType: "onboarding" | "offboarding" 
       `${caseType}-${scope}-${businessDate()}`,
       format,
     );
+    if (!result.exported) toast.info(t("No records to export."));
   };
 
   return (
