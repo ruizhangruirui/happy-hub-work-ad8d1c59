@@ -4,7 +4,7 @@
 
 Reviewed path: browser UI → authenticated TanStack server functions → domain/service layer → Supabase RPC/PostgreSQL → RLS → private Storage → localhost Outlook helper.
 
-The browser receives only the Supabase publishable key. `SUPABASE_SERVICE_ROLE_KEY` is imported only by server-only user administration code. `.env`, build output, helper publish output and local platform state are ignored by Git.
+The browser receives only the Supabase URL and publishable key. Those public values have a checked-in production fallback so Git-connected hosts cannot lose them during deployment; environment values override the fallback. `SUPABASE_SERVICE_ROLE_KEY` remains runtime-only and is imported only by server-only user administration code. `.env`, build output, helper publish output and local platform state are ignored by Git.
 
 ## Authentication and authorization
 
