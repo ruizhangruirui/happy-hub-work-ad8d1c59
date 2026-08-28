@@ -98,6 +98,14 @@ export function Shell({
       </aside>
       <div>
         <header className="topbar">
+          <button
+            className="navtoggle"
+            onClick={() => setNavOpen((v) => !v)}
+            aria-label={t("Menu")}
+            aria-expanded={navOpen}
+          >
+            <Icon name="menu" />
+          </button>
           <form className="globalsearch" onSubmit={submitSearch}>
             <Icon name="search" />
             <input
