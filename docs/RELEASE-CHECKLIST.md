@@ -61,7 +61,7 @@ Release model: **Phase 5 — CODE COMPLETE / Team Workbench V1 — PILOT CANDIDA
 
 ## Release Evidence
 
-    Application commit: TBD — final closure commit not yet created
+    Application commit: 27c4dd4dba2aebaa09d3ea409f04257d9d93b28e
     Migration head: 20260829090000_phase5_production_hardening.sql
     Automated test date: 2026-08-28
     Staging smoke date: TBD
