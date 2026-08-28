@@ -9,7 +9,7 @@ export const getWorkbenchDataFn = createServerFn({ method: "GET" })
 
 export const getOperationsOverviewFn = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) =>
+  .validator((data) =>
     z
       .object({
         team: z.string().max(160).optional(),
@@ -27,14 +27,14 @@ export const getOperationsOverviewFn = createServerFn({ method: "GET" })
 
 export const getCaseDetailFn = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) => z.object({ caseId: z.string().uuid() }).parse(data))
+  .validator((data) => z.object({ caseId: z.string().uuid() }).parse(data))
   .handler(({ data, context }) =>
     wb.getCaseDetail(context.supabase as wb.Db, context.userId, data.caseId),
   );
 
 export const shareCaseFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) =>
+  .validator((data) =>
     z
       .object({
         caseId: z.string().uuid(),
@@ -47,21 +47,21 @@ export const shareCaseFn = createServerFn({ method: "POST" })
 
 export const removeMemberFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) => z.object({ memberId: z.string().uuid() }).parse(data))
+  .validator((data) => z.object({ memberId: z.string().uuid() }).parse(data))
   .handler(({ data, context }) =>
     wb.removeMember(context.supabase as wb.Db, context.userId, data.memberId),
   );
 
 export const assignTaskFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) =>
+  .validator((data) =>
     z.object({ taskId: z.string().uuid(), ownerId: z.string().uuid().nullable() }).parse(data),
   )
   .handler(({ data, context }) => wb.assignTask(context.supabase as wb.Db, context.userId, data));
 
 export const createTaskFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) =>
+  .validator((data) =>
     z
       .object({
         caseId: z.string().uuid(),
@@ -79,14 +79,12 @@ export const createTaskFn = createServerFn({ method: "POST" })
 
 export const toggleTaskFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) =>
-    z.object({ taskId: z.string().uuid(), complete: z.boolean() }).parse(data),
-  )
+  .validator((data) => z.object({ taskId: z.string().uuid(), complete: z.boolean() }).parse(data))
   .handler(({ data, context }) => wb.toggleTask(context.supabase as wb.Db, context.userId, data));
 
 export const setTaskStatusFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) =>
+  .validator((data) =>
     z
       .object({
         taskId: z.string().uuid(),
@@ -109,7 +107,7 @@ export const setTaskStatusFn = createServerFn({ method: "POST" })
 
 export const addTaskCommentFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) =>
+  .validator((data) =>
     z.object({ taskId: z.string().uuid(), body: z.string().min(1).max(2000) }).parse(data),
   )
   .handler(({ data, context }) =>
@@ -118,16 +116,14 @@ export const addTaskCommentFn = createServerFn({ method: "POST" })
 
 export const syncCaseTasksFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) => z.object({ caseId: z.string().uuid() }).parse(data))
+  .validator((data) => z.object({ caseId: z.string().uuid() }).parse(data))
   .handler(({ data, context }) =>
     wb.syncCaseTasks(context.supabase as wb.Db, context.userId, data.caseId),
   );
 
 export const toggleChecklistFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) =>
-    z.object({ itemId: z.string().uuid(), complete: z.boolean() }).parse(data),
-  )
+  .validator((data) => z.object({ itemId: z.string().uuid(), complete: z.boolean() }).parse(data))
   .handler(({ data, context }) =>
     wb.toggleChecklist(context.supabase as wb.Db, context.userId, data),
   );
@@ -153,13 +149,13 @@ const onboardingInput = z.object({
 });
 export const createOnboardingCaseFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => onboardingInput.parse(d))
+  .validator((d) => onboardingInput.parse(d))
   .handler(({ data, context }) =>
     wb.createOnboardingCase(context.supabase as wb.Db, context.userId, data),
   );
 export const createOffboardingCaseFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
+  .validator((d) =>
     z
       .object({
         personId: z.string().uuid(),
@@ -178,16 +174,26 @@ export const createOffboardingCaseFn = createServerFn({ method: "POST" })
   );
 export const getPeopleFn = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(({ context }) => wb.getPeople(context.supabase as wb.Db, context.userId));
+  .validator((data) =>
+    z
+      .object({
+        search: z.string().max(160).optional(),
+        status: z.string().max(40).optional(),
+        page: z.number().int().positive().default(1),
+        pageSize: z.number().int().min(1).max(100).default(50),
+      })
+      .parse(data),
+  )
+  .handler(({ data, context }) => wb.getPeople(context.supabase as wb.Db, context.userId, data));
 export const getPersonDetailFn = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ personId: z.string().uuid() }).parse(d))
+  .validator((d) => z.object({ personId: z.string().uuid() }).parse(d))
   .handler(({ data, context }) =>
     wb.getPersonDetail(context.supabase as wb.Db, context.userId, data.personId),
   );
 export const updatePersonIdentityFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) =>
+  .validator((data) =>
     z
       .object({
         personId: z.string().uuid(),
@@ -202,7 +208,7 @@ export const updatePersonIdentityFn = createServerFn({ method: "POST" })
   );
 export const findOnboardingCandidatesFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
+  .validator((d) =>
     z
       .object({
         employeeId: z.string().max(80).optional(),
@@ -218,16 +224,14 @@ export const findOnboardingCandidatesFn = createServerFn({ method: "POST" })
 
 export const setCaseConfirmationFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) =>
-    z.object({ caseId: z.string().uuid(), confirmed: z.boolean() }).parse(data),
-  )
+  .validator((data) => z.object({ caseId: z.string().uuid(), confirmed: z.boolean() }).parse(data))
   .handler(({ data, context }) =>
     wb.setCaseConfirmation(context.supabase as wb.Db, context.userId, data.caseId, data.confirmed),
   );
 
 export const updateOffboardingDatesFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) =>
+  .validator((data) =>
     z
       .object({
         caseId: z.string().uuid(),
@@ -246,7 +250,7 @@ export const getActiveRosterFn = createServerFn({ method: "GET" })
 
 export const createExternalRequestFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) =>
+  .validator((data) =>
     z
       .object({
         workflowItemId: z.string().uuid(),
@@ -264,7 +268,7 @@ export const createExternalRequestFn = createServerFn({ method: "POST" })
 
 export const updateWorkflowItemFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) =>
+  .validator((data) =>
     z
       .object({
         itemId: z.string().uuid(),
@@ -278,7 +282,7 @@ export const updateWorkflowItemFn = createServerFn({ method: "POST" })
 
 export const saveUserFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) =>
+  .validator((data) =>
     z
       .object({
         id: z.string().uuid().optional(),
@@ -311,7 +315,7 @@ export const listChecklistTemplateItemsFn = createServerFn({ method: "GET" })
 
 export const saveChecklistTemplateItemFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) =>
+  .validator((data) =>
     z
       .object({
         id: z.string().uuid().optional(),
@@ -339,7 +343,7 @@ export const saveChecklistTemplateItemFn = createServerFn({ method: "POST" })
 
 export const saveChecklistTemplateFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) =>
+  .validator((data) =>
     z
       .object({
         id: z.string().uuid().optional(),
@@ -364,7 +368,7 @@ export const listEmailEligibleCaseIdsFn = createServerFn({ method: "GET" })
 
 export const saveTemplateFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) =>
+  .validator((data) =>
     z
       .object({
         id: z.string().uuid().optional(),
@@ -406,7 +410,7 @@ export const saveTemplateFn = createServerFn({ method: "POST" })
 
 export const saveEmailDraftFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) =>
+  .validator((data) =>
     z
       .object({
         caseId: z.string().uuid(),
@@ -425,7 +429,7 @@ export const saveEmailDraftFn = createServerFn({ method: "POST" })
 
 export const completeEmailTaskFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) =>
+  .validator((data) =>
     z
       .object({
         taskId: z.string().uuid().optional(),
@@ -445,7 +449,7 @@ export const completeEmailTaskFn = createServerFn({ method: "POST" })
 
 export const recordOutlookOpenedFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) =>
+  .validator((data) =>
     z
       .object({
         communicationId: z.string().uuid(),
@@ -465,7 +469,7 @@ export const recordOutlookOpenedFn = createServerFn({ method: "POST" })
 
 export const bindEmailComposeAttachmentsFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) =>
+  .validator((data) =>
     z
       .object({ composeSessionId: z.string().uuid(), communicationId: z.string().uuid() })
       .parse(data),
@@ -474,31 +478,23 @@ export const bindEmailComposeAttachmentsFn = createServerFn({ method: "POST" })
     wb.bindEmailComposeAttachments(context.supabase as wb.Db, context.userId, data),
   );
 
-export const requestTemporaryEmailAttachmentDeletionFn = createServerFn({ method: "POST" })
+export const deleteTemporaryEmailAttachmentFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) => z.object({ attachmentId: z.string().uuid() }).parse(data))
+  .validator((data) => z.object({ attachmentId: z.string().uuid() }).parse(data))
   .handler(({ data, context }) =>
-    wb.requestTemporaryEmailAttachmentDeletion(
-      context.supabase as wb.Db,
-      context.userId,
-      data.attachmentId,
-    ),
+    wb.deleteTemporaryEmailAttachment(context.supabase as wb.Db, context.userId, data.attachmentId),
   );
 
-export const finalizeTemporaryEmailAttachmentDeletionFn = createServerFn({ method: "POST" })
+export const deleteCaseFileFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) => z.object({ attachmentId: z.string().uuid() }).parse(data))
+  .validator((data) => z.object({ fileId: z.string().uuid() }).parse(data))
   .handler(({ data, context }) =>
-    wb.finalizeTemporaryEmailAttachmentDeletion(
-      context.supabase as wb.Db,
-      context.userId,
-      data.attachmentId,
-    ),
+    wb.deleteCaseFile(context.supabase as wb.Db, context.userId, data.fileId),
   );
 
 export const assignChecklistOwnerFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) =>
+  .validator((data) =>
     z.object({ itemId: z.string().uuid(), ownerId: z.string().uuid().nullable() }).parse(data),
   )
   .handler(({ data, context }) =>
@@ -507,7 +503,7 @@ export const assignChecklistOwnerFn = createServerFn({ method: "POST" })
 
 export const saveLabFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) =>
+  .validator((data) =>
     z
       .object({
         id: z.string().uuid().optional(),
@@ -520,7 +516,7 @@ export const saveLabFn = createServerFn({ method: "POST" })
 
 export const saveTeamFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data) =>
+  .validator((data) =>
     z
       .object({
         id: z.string().uuid().optional(),

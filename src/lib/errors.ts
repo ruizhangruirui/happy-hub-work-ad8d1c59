@@ -16,6 +16,14 @@ export function opErrorMessage(t: (s: string) => string, code: string | undefine
       return t("This person is already shared on the case.");
     case "offboarding_exists":
       return t("An offboarding case already exists for this employment.");
+    case "storage_failed":
+      return t("The file could not be removed from secure storage. Please try again.");
+    case "storage_metadata_mismatch":
+      return t("The file was removed, but its record needs administrator cleanup.");
+    case "invalid_lifecycle":
+      return t("This lifecycle change is not valid for the current Case state.");
+    case "validation_failed":
+      return t("Check the required fields and try again.");
     default:
       return t("Something went wrong. Please try again.");
   }

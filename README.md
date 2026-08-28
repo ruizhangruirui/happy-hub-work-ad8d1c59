@@ -41,7 +41,7 @@ The lifecycle foundation is documented in [V1 Architecture](docs/V1-ARCHITECTURE
 
 **Implemented in Phase 2:** configurable checklist templates and stable-code rules; idempotent task generation/synchronization; HR/IT/Admin ownership and assignment; team-scoped server authorization; My Tasks workload views; grouped Case progress; due-date recalculation; comments and task audit history; mandatory-task Case completion gate.
 
-**Later-phase work:** AI agents, Email Center V2, Outlook attachment helper, Task attachment upload UI, export refinements, advanced charts and People Analytics remain separate product phases.
+Phase 3 Email Center V2, the optional Classic Outlook draft helper, Phase 4 reporting/export and Phase 5 production hardening are included. No AI/Agent feature is part of V1.
 
 ## Technology Stack
 
@@ -102,8 +102,36 @@ bun run dev       # Start the development server
 bun run build     # Create a production build
 bun run preview   # Preview the production build
 bun run lint      # Run ESLint
+bun run typecheck # Validate TypeScript
+bun run test      # Unit + fresh PostgreSQL migration/RLS integration tests
+bun run test:integration # PostgreSQL integration suite only
 bun run format    # Format the codebase
 ```
+
+## Deployment
+
+Database changes are forward-only migrations. Apply every pending file in `supabase/migrations`, then deploy the exact same Git commit through the repository-connected Lovable environment. Never rewrite already-published Git or migration history.
+
+Before Production, complete the environment smoke, backup/restore evidence and Windows acceptance in the release documents below. The repository build is a **V1 pilot candidate** until those environment-owned checks are signed off.
+
+## Outlook Helper
+
+The optional Windows .NET 8 helper lives in [`tools/outlook-helper`](tools/outlook-helper). It binds only to localhost, allowlists web origins and attachment hosts, validates payload/file limits, and displays a Classic Outlook draft. It has no Send API. Build/install instructions are in the helper README; manual acceptance is tracked separately.
+
+## Documentation Map
+
+- [V1 Architecture](docs/V1-ARCHITECTURE.md)
+- [Schema](docs/SCHEMA.md)
+- [Phase 2 Checklist & Collaboration](docs/PHASE2-ARCHITECTURE.md)
+- [Phase 3 Email Center](docs/PHASE3-EMAIL-CENTER.md)
+- [Phase 4 Operations & Reporting](docs/PHASE4-OPERATIONS-REPORTING.md)
+- [Permission Matrix](docs/PERMISSION-MATRIX.md)
+- [Security Review](docs/SECURITY-REVIEW.md)
+- [Technical Data Inventory](docs/DATA-INVENTORY.md)
+- [Operations Runbook](docs/OPERATIONS-RUNBOOK.md)
+- [E2E Regression Matrix](docs/E2E-REGRESSION.md)
+- [Windows Acceptance](docs/WINDOWS-ACCEPTANCE.md)
+- [Release Checklist](docs/RELEASE-CHECKLIST.md)
 
 ---
 

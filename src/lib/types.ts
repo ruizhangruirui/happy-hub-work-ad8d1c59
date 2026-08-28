@@ -172,6 +172,14 @@ export interface OperationsOverviewDto {
   tasks: OperationsTaskReportDto[];
 }
 
+export interface PeoplePageDto {
+  items: PeopleRowDto[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
 export interface OperationsCaseSummaryDto {
   caseId: string;
   name: string;

@@ -20,6 +20,7 @@ import type {
   ExternalRequestDto,
   EmailVariableDto,
   PeopleRowDto,
+  PeoplePageDto,
   PersonDetailDto,
   ChecklistTemplateDto,
   ChecklistTemplateItemDto,
@@ -222,15 +223,21 @@ export async function getWorkbenchData(
 ): Promise<WorkbenchData | { error: "access_denied" }> {
   const identity = await loadIdentity(supabase, userId);
   if (!identity) return { error: "access_denied" };
+  const profilesQuery =
+    identity.role === "admin"
+      ? supabase.from("profiles").select("id,name,email,title,status")
+      : supabase.rpc("list_profile_directory");
 
   const [casesRes, profilesRes, rolesRes, scopesRes, labsRes, teamsRes, tasksRes, operationalRes] =
     await Promise.all([
       supabase
         .from("cases")
-        .select("*, persons(full_name, lab_id, team_id, teams(name))")
+        .select(
+          "id,case_type,employment_type,start_date,end_date,effective_date,employment_id,owner_id,status,priority,role,location,supervisor_name,supervisor_email,contract_end_date,last_working_day,joined_date,joined_at,left_date,left_at,leaving_type,persons(full_name,lab_id,team_id,teams(name))",
+        )
         .is("archived_at", null)
         .order("created_at", { ascending: false }),
-      supabase.from("profiles").select("id,name,email,title,status"),
+      profilesQuery,
       supabase.from("user_roles").select("user_id,role"),
       supabase.from("user_scopes").select("user_id,scope_type,lab_id,team_id"),
       supabase.from("labs").select("id,name,status").order("name"),
@@ -283,7 +290,7 @@ export async function getWorkbenchData(
   const users: UserDto[] = profiles.map((p) => ({
     id: p.id,
     name: p.name,
-    email: isAdmin || p.id === userId ? p.email : null,
+    email: isAdmin ? p.email : p.id === userId ? identity.email : null,
     title: p.title,
     role: ROLE_LABEL[roleOf.get(p.id) ?? "viewer"] ?? "Viewer",
     status: p.status,
@@ -398,8 +405,14 @@ export async function getCaseDetail(
       .select("id,user_id,access_level")
       .eq("case_id", caseId)
       .is("revoked_at", null),
-    supabase.from("profiles").select("id,name,status"),
-    supabase.from("checklist_items").select("*").eq("case_id", caseId).order("sort_order"),
+    supabase.rpc("list_profile_directory"),
+    supabase
+      .from("checklist_items")
+      .select(
+        "id,title,section,status,owner_id,due_date,completed_date,completed_by,task_id,sort_order",
+      )
+      .eq("case_id", caseId)
+      .order("sort_order"),
     supabase
       .from("audit_logs")
       .select("id,actor_id,action,field,previous_value,new_value,created_at")
@@ -411,10 +424,16 @@ export async function getCaseDetail(
       .select("id,filename,size,content_type,created_at,uploaded_by")
       .eq("case_id", caseId)
       .order("created_at", { ascending: false }),
-    supabase.from("case_workflow_items").select("*").eq("case_id", caseId).order("sequence"),
+    supabase
+      .from("case_workflow_items")
+      .select("id,step_key,title,description,sequence,target_date,status,completed_at,completed_by")
+      .eq("case_id", caseId)
+      .order("sequence"),
     supabase
       .from("external_collaboration_requests")
-      .select("*")
+      .select(
+        "id,workflow_item_id,recipient_email,recipient_name,recipient_team,status,response_note,due_date,expires_at,created_at,responded_at",
+      )
       .eq("case_id", caseId)
       .order("created_at", { ascending: false }),
     supabase.rpc("list_operational_tasks", { _case_id: caseId }),
@@ -422,10 +441,11 @@ export async function getCaseDetail(
     supabase
       .from("email_communications")
       .select(
-        "*, email_templates(name), email_additional_attachments(id,filename,size,content_type), email_communication_attachment_snapshots(id,filename,size,content_type)",
+        "id,task_id,template_id,template_version,recipient,rendered_subject,state,outlook_mode,prepared_by,prepared_at,opened_at,marked_sent_at,email_templates(name),email_additional_attachments(id,filename,size,content_type),email_communication_attachment_snapshots(id,filename,size,content_type)",
       )
       .eq("case_id", caseId)
-      .order("prepared_at", { ascending: false }),
+      .order("prepared_at", { ascending: false })
+      .limit(100),
   ]);
 
   const myMembership = ((membersRes.data ?? []) as any[]).find((m) => m.user_id === userId);
@@ -661,11 +681,8 @@ export async function shareCase(
   userId: string,
   input: { caseId: string; targetUserId: string; accessLevel: "viewer" | "collaborator" },
 ) {
-  const { data: target } = await supabase
-    .from("profiles")
-    .select("name")
-    .eq("id", input.targetUserId)
-    .maybeSingle();
+  const { data: directory } = await supabase.rpc("list_profile_directory");
+  const target = ((directory ?? []) as any[]).find((profile) => profile.id === input.targetUserId);
   const { error } = await supabase.from("case_members").insert({
     case_id: input.caseId,
     user_id: input.targetUserId,
@@ -696,11 +713,8 @@ export async function removeMember(supabase: Db, userId: string, memberId: strin
     .eq("id", memberId)
     .maybeSingle();
   if (!member) return { error: "not_found" as const };
-  const { data: target } = await supabase
-    .from("profiles")
-    .select("name")
-    .eq("id", member.user_id)
-    .maybeSingle();
+  const { data: directory } = await supabase.rpc("list_profile_directory");
+  const target = ((directory ?? []) as any[]).find((profile) => profile.id === member.user_id);
   const { error } = await supabase.from("case_members").delete().eq("id", memberId);
   if (error) {
     if (error.code === "42501") return { error: "forbidden" as const };
@@ -957,23 +971,22 @@ function peopleRow(row: any): PeopleRowDto {
 export async function getPeople(
   supabase: Db,
   userId: string,
-): Promise<PeopleRowDto[] | { error: "access_denied" }> {
+  input: {
+    search?: string | undefined;
+    status?: string | undefined;
+    page: number;
+    pageSize: number;
+  },
+): Promise<PeoplePageDto | { error: "access_denied" }> {
   if (!(await loadIdentity(supabase, userId))) return { error: "access_denied" };
-  const [{ data: persons, error }, { data: employments }, { data: teams }] = await Promise.all([
-    supabase.from("persons").select("*").is("archived_at", null).order("full_name"),
-    supabase.from("employment_effective").select("*"),
-    supabase.from("teams").select("id,name"),
-  ]);
+  const { data, error } = await supabase.rpc("list_people_page", {
+    _search: input.search || null,
+    _status: input.status || null,
+    _page: input.page,
+    _page_size: input.pageSize,
+  });
   if (error) throw new Error(error.message);
-  const teamNames = new Map(((teams ?? []) as any[]).map((t) => [t.id, t.name]));
-  const byPerson = new Map<string, any[]>();
-  for (const e of (employments ?? []) as any[]) {
-    e.teams = { name: teamNames.get(e.team_id) ?? "—" };
-    byPerson.set(e.person_id, [...(byPerson.get(e.person_id) ?? []), e]);
-  }
-  return ((persons ?? []) as any[])
-    .filter((p) => byPerson.has(p.id))
-    .map((p) => peopleRow({ ...p, employments: byPerson.get(p.id) }));
+  return data as PeoplePageDto;
 }
 
 export async function getPersonDetail(
@@ -998,7 +1011,7 @@ export async function getPersonDetail(
       .select("*, persons(full_name,lab_id,team_id,teams(name))")
       .eq("person_id", personId)
       .order("created_at", { ascending: false }),
-    supabase.from("profiles").select("id,name"),
+    supabase.rpc("list_profile_directory"),
   ]);
   if (error) throw new Error(error.message);
   if (!person) return { error: "not_found" };
@@ -1809,7 +1822,7 @@ export async function bindEmailComposeAttachments(
   return { ok: true as const, bound: Number(data ?? 0) };
 }
 
-export async function requestTemporaryEmailAttachmentDeletion(
+export async function deleteTemporaryEmailAttachment(
   supabase: Db,
   _userId: string,
   attachmentId: string,
@@ -1821,22 +1834,49 @@ export async function requestTemporaryEmailAttachmentDeletion(
     if (error.code === "42501") return { error: "forbidden" as const };
     throw new Error(error.message);
   }
-  return { ok: true as const, storagePath: data as string };
+  const storagePath = data as string;
+  const { error: storageError } = await supabase.storage
+    .from("email-attachments")
+    .remove([storagePath]);
+  if (storageError) return { error: "storage_failed" as const };
+  const { data: finalized, error: finalizeError } = await supabase.rpc(
+    "finalize_temporary_email_attachment_deletion",
+    {
+      _attachment_id: attachmentId,
+    },
+  );
+  if (finalizeError) {
+    if (finalizeError.code === "42501") return { error: "forbidden" as const };
+    throw new Error(finalizeError.message);
+  }
+  return finalized
+    ? ({ ok: true as const } as const)
+    : ({ error: "storage_metadata_mismatch" as const } as const);
 }
 
-export async function finalizeTemporaryEmailAttachmentDeletion(
-  supabase: Db,
-  _userId: string,
-  attachmentId: string,
-) {
-  const { data, error } = await supabase.rpc("finalize_temporary_email_attachment_deletion", {
-    _attachment_id: attachmentId,
+export async function deleteCaseFile(supabase: Db, _userId: string, fileId: string) {
+  const { data, error } = await supabase.rpc("request_case_file_deletion", {
+    _file_id: fileId,
   });
   if (error) {
     if (error.code === "42501") return { error: "forbidden" as const };
     throw new Error(error.message);
   }
-  return data ? ({ ok: true as const } as const) : ({ error: "forbidden" as const } as const);
+  const { error: storageError } = await supabase.storage
+    .from("case-files")
+    .remove([data as string]);
+  if (storageError) return { error: "storage_failed" as const };
+  const { data: finalized, error: finalizeError } = await supabase.rpc(
+    "finalize_case_file_deletion",
+    { _file_id: fileId },
+  );
+  if (finalizeError) {
+    if (finalizeError.code === "42501") return { error: "forbidden" as const };
+    throw new Error(finalizeError.message);
+  }
+  return finalized
+    ? ({ ok: true as const } as const)
+    : ({ error: "storage_metadata_mismatch" as const } as const);
 }
 
 export async function completeEmailTask(

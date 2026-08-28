@@ -21,10 +21,13 @@ describe("safe operational exports", () => {
     expect(createCsv([], ["Name", "Status"])).toBe('"Name","Status"');
   });
 
-  it.each(["csv", "xlsx"] as const)("does not download an empty %s product export", (format) => {
-    expect(exportRows([], "empty", format, { columns: ["Name"] })).toEqual({
-      exported: false,
-      reason: "empty",
-    });
-  });
+  it.each(["csv", "xlsx"] as const)(
+    "does not download an empty %s product export",
+    async (format) => {
+      await expect(exportRows([], "empty", format, { columns: ["Name"] })).resolves.toEqual({
+        exported: false,
+        reason: "empty",
+      });
+    },
+  );
 });

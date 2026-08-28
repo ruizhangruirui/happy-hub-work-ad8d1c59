@@ -22,7 +22,7 @@ function ActiveRosterPage() {
   const { t, lang } = useLang();
   const navigate = useNavigate();
   const fetchRoster = useServerFn(getActiveRosterFn);
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["active-roster"],
     queryFn: () => fetchRoster(),
   });
@@ -69,8 +69,8 @@ function ActiveRosterPage() {
       setAscending(true);
     }
   };
-  const exportRoster = (scope: "view" | "all", format: "csv" | "xlsx") => {
-    const result = exportRows(
+  const exportRoster = async (scope: "view" | "all", format: "csv" | "xlsx") => {
+    const result = await exportRows(
       (scope === "view" ? filtered : roster).map((x) => ({
         Name: x.name,
         "Employee ID": x.employeeId,
@@ -89,6 +89,15 @@ function ActiveRosterPage() {
     if (!result.exported) toast.info(t("No records to export."));
   };
   if (isLoading) return <Loading />;
+  if (isError)
+    return (
+      <Empty
+        icon="alert"
+        title={t("Active People could not be loaded.")}
+        action={t("Try again")}
+        onAction={() => void refetch()}
+      />
+    );
   if (data && !Array.isArray(data))
     return <Empty icon="lock" title={t("You don't have permission to do that.")} />;
 

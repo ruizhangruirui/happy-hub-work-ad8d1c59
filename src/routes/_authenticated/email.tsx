@@ -7,12 +7,11 @@ import { toast } from "sonner";
 import {
   completeEmailTaskFn,
   bindEmailComposeAttachmentsFn,
-  finalizeTemporaryEmailAttachmentDeletionFn,
+  deleteTemporaryEmailAttachmentFn,
   getCaseDetailFn,
   listPublishedTemplatesFn,
   listEmailEligibleCaseIdsFn,
   recordOutlookOpenedFn,
-  requestTemporaryEmailAttachmentDeletionFn,
   saveEmailDraftFn,
 } from "@/lib/workbench.functions";
 import { useWorkbench } from "@/components/workbench/CaseList";
@@ -56,8 +55,8 @@ export function EmailPage() {
   const recordOpened = useServerFn(recordOutlookOpenedFn);
   const completeTask = useServerFn(completeEmailTaskFn);
   const bindAttachments = useServerFn(bindEmailComposeAttachmentsFn);
-  const requestAttachmentDeletion = useServerFn(requestTemporaryEmailAttachmentDeletionFn);
-  const finalizeAttachmentDeletion = useServerFn(finalizeTemporaryEmailAttachmentDeletionFn);
+  const deleteAttachment = useServerFn(deleteTemporaryEmailAttachmentFn);
+  const deleteAttachmentRef = useRef(deleteAttachment);
   const { data: wbData, isLoading: wbLoading } = useWorkbench();
   const { data: templateData, isLoading: templateLoading } = useQuery({
     queryKey: ["email-templates"],
@@ -109,15 +108,11 @@ export function EmailPage() {
     additionalRef.current = additional;
   }, [additional]);
   useEffect(() => {
+    deleteAttachmentRef.current = deleteAttachment;
+  }, [deleteAttachment]);
+  useEffect(() => {
     for (const item of temporaryComposeAttachments(additionalRef.current)) {
-      void (async () => {
-        const requested = await requestAttachmentDeletion({ data: { attachmentId: item.id } });
-        if ("error" in requested) return;
-        const { error } = await supabase.storage
-          .from("email-attachments")
-          .remove([requested.storagePath]);
-        if (!error) await finalizeAttachmentDeletion({ data: { attachmentId: item.id } });
-      })();
+      void deleteAttachmentRef.current({ data: { attachmentId: item.id } });
     }
     setCommunicationId("");
     setOpened(false);
@@ -256,11 +251,6 @@ export function EmailPage() {
     const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
     const path = `additional/${caseId}/${id}-${safe}`;
     const storage = supabase.storage.from("email-attachments");
-    const { error } = await storage.upload(path, file);
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
     const { data: auth } = await supabase.auth.getUser();
     const { error: metadataError } = await (supabase as any)
       .from("email_additional_attachments")
@@ -275,8 +265,13 @@ export function EmailPage() {
         uploaded_by: auth.user?.id,
       });
     if (metadataError) {
-      await storage.remove([path]);
       toast.error(metadataError.message);
+      return;
+    }
+    const { error } = await storage.upload(path, file);
+    if (error) {
+      await deleteAttachment({ data: { attachmentId: id } });
+      toast.error(error.message);
       return;
     }
     const { data: signed, error: signError } = await storage.createSignedUrl(path, 600);
@@ -516,25 +511,11 @@ export function EmailPage() {
                   <button
                     onClick={() => {
                       void (async () => {
-                        const requested = await requestAttachmentDeletion({
+                        const deleted = await deleteAttachment({
                           data: { attachmentId: item.id },
                         });
-                        if ("error" in requested) {
-                          toast.error(opErrorMessage(t, requested.error));
-                          return;
-                        }
-                        const { error } = await supabase.storage
-                          .from("email-attachments")
-                          .remove([requested.storagePath]);
-                        if (error) {
-                          toast.error(error.message);
-                          return;
-                        }
-                        const finalized = await finalizeAttachmentDeletion({
-                          data: { attachmentId: item.id },
-                        });
-                        if ("error" in finalized) {
-                          toast.error(opErrorMessage(t, finalized.error));
+                        if ("error" in deleted) {
+                          toast.error(opErrorMessage(t, deleted.error));
                           return;
                         }
                         setAdditional((list) => list.filter((file) => file.id !== item.id));

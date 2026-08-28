@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { useLang } from "@/lib/i18n";
 
 const ICONS: Record<string, string> = {
@@ -57,11 +57,49 @@ export function Modal({
   close: () => void;
   children: ReactNode;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(close);
+  closeRef.current = close;
+  const titleId = useId();
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    const panel = panelRef.current;
+    panel
+      ?.querySelector<HTMLElement>(
+        "input:not([disabled]),select:not([disabled]),textarea:not([disabled]),button:not([disabled])",
+      )
+      ?.focus();
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeRef.current();
+      if (event.key !== "Tab" || !panel) return;
+      const focusable = [
+        ...panel.querySelectorAll<HTMLElement>(
+          "input:not([disabled]),select:not([disabled]),textarea:not([disabled]),button:not([disabled]),a[href]",
+        ),
+      ];
+      if (!focusable.length) return;
+      const first = focusable[0]!;
+      const last = focusable.at(-1)!;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("keydown", handleKey);
+      previous?.focus();
+    };
+  }, []);
+
   return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="modal">
+    <div className="overlay" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <div className="modal" ref={panelRef}>
         <div className="modalhead">
-          <b>{title}</b>
+          <b id={titleId}>{title}</b>
           <button onClick={close} aria-label="Close">
             <Icon name="x" />
           </button>

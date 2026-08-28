@@ -1153,7 +1153,7 @@ describe("Phase 3 Email Center — PostgreSQL security and history", () => {
     ).toBe(0);
   });
 
-  it("abandoned cleanup removes only unbound metadata and retains linked history", async () => {
+  it("abandoned cleanup stages only unbound metadata and retains linked history", async () => {
     const created = await createOnboarding(ADMIN, TEAM_A, "P3-ORPHAN");
     const caseId = created.rows[0]!.result.caseId;
     const template = await db.query<{ id: string; version: number }>(
@@ -1641,5 +1641,207 @@ describe("Phase 4 Final Patch — HR reporting scope is independent from mutatio
     expect(caseIds).toContain(network.rows[0]!.result.caseId);
     expect(caseIds).toContain(ai.rows[0]!.result.caseId);
     expect(caseIds).not.toContain(storage.rows[0]!.result.caseId);
+  });
+});
+
+describe("Phase 5 production security audit", () => {
+  it("enables RLS on every business table", async () => {
+    const businessTables = [
+      "profiles",
+      "user_roles",
+      "user_scopes",
+      "user_operational_teams",
+      "persons",
+      "employments",
+      "cases",
+      "case_members",
+      "tasks",
+      "task_comments",
+      "checklist_templates",
+      "checklist_template_items",
+      "checklist_items",
+      "case_files",
+      "task_files",
+      "email_templates",
+      "email_variable_library",
+      "email_template_variables",
+      "email_template_attachments",
+      "email_communications",
+      "email_additional_attachments",
+      "email_communication_attachment_snapshots",
+      "audit_logs",
+      "external_collaboration_requests",
+    ];
+    const result = await db.query<{ relname: string; relrowsecurity: boolean }>(
+      `select relname,relrowsecurity
+       from pg_class join pg_namespace on pg_namespace.oid=pg_class.relnamespace
+       where nspname='public' and relname=any($1::text[])`,
+      [businessTables],
+    );
+    const missing = businessTables.filter(
+      (name) => !result.rows.some((row) => row.relname === name && row.relrowsecurity),
+    );
+    expect(missing).toEqual([]);
+  });
+
+  it("pins every public SECURITY DEFINER function search_path", async () => {
+    const result = await db.query<{ proname: string; proconfig: string[] | null }>(
+      `select proname,proconfig
+       from pg_proc join pg_namespace on pg_namespace.oid=pg_proc.pronamespace
+       where nspname='public' and prosecdef`,
+    );
+    const unpinned = result.rows
+      .filter((row) => !row.proconfig?.some((item) => item.startsWith("search_path=")))
+      .map((row) => row.proname);
+    expect(unpinned).toEqual([]);
+  });
+
+  it("does not grant PUBLIC execution on SECURITY DEFINER functions", async () => {
+    const result = await db.query<{ signature: string }>(
+      `select p.oid::regprocedure::text signature
+       from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+       where n.nspname='public' and p.prosecdef and has_function_privilege('public',p.oid,'EXECUTE')`,
+    );
+    expect(result.rows.map((row) => row.signature)).toEqual([]);
+  });
+
+  it("governs Case file deletion through request, Storage and finalize stages", async () => {
+    const created = await createOnboarding(ADMIN, TEAM_A, "P5-FILE");
+    const caseId = created.rows[0]!.result.caseId;
+    const fileId = "56565656-5656-5656-5656-565656565656";
+    const path = `${caseId}/${fileId}-contract.pdf`;
+    await db.query(
+      `insert into public.case_files(id,case_id,filename,storage_path,content_type,size,uploaded_by)
+       values($1,$2,'contract.pdf',$3,'application/pdf',128,$4)`,
+      [fileId, caseId, path, ADMIN],
+    );
+    await db.query("insert into storage.objects(bucket_id,name,owner) values('case-files',$1,$2)", [
+      path,
+      ADMIN,
+    ]);
+
+    await expect(
+      asUser(VIEWER, "select public.request_case_file_deletion($1)", [fileId]),
+    ).rejects.toThrow();
+    await expect(
+      asUser(VIEWER, "delete from public.case_files where id=$1", [fileId]),
+    ).rejects.toThrow();
+
+    const requested = await asUser<{ path: string }>(
+      ADMIN,
+      "select public.request_case_file_deletion($1) path",
+      [fileId],
+    );
+    expect(requested.rows[0]!.path).toBe(path);
+    expect(
+      (
+        await asUser(
+          ADMIN,
+          "delete from storage.objects where bucket_id='case-files' and name=$1",
+          [path],
+        )
+      ).affectedRows,
+    ).toBe(1);
+    expect(
+      (
+        await asUser<{ ok: boolean }>(ADMIN, "select public.finalize_case_file_deletion($1) ok", [
+          fileId,
+        ])
+      ).rows[0]!.ok,
+    ).toBe(true);
+  });
+
+  it("stages orphan cleanup and never touches bound historical attachments", async () => {
+    const created = await createOnboarding(ADMIN, TEAM_A, "P5-CLEAN");
+    const caseId = created.rows[0]!.result.caseId;
+    const template = await db.query<{ id: string }>(
+      "select id from public.email_templates limit 1",
+    );
+    const communication = await asUser<{ id: string }>(
+      ADMIN,
+      "select public.record_email_event($1,null,$2,1,'test@example.test','Subject','Draft Prepared',null) id",
+      [caseId, template.rows[0]!.id],
+    );
+    const temporaryId = "67676767-6767-6767-6767-676767676767";
+    const boundId = "68686868-6868-6868-6868-686868686868";
+    await db.query(
+      `insert into public.email_additional_attachments(
+        id,case_id,compose_session_id,communication_id,filename,storage_path,content_type,size,uploaded_by,expires_at
+       ) values
+       ($1,$3,gen_random_uuid(),null,'temporary.pdf','additional/temporary.pdf','application/pdf',1,$4,now()-interval '1 day'),
+       ($2,$3,gen_random_uuid(),$5,'bound.pdf','additional/bound.pdf','application/pdf',1,$4,now()-interval '1 day')`,
+      [temporaryId, boundId, caseId, ADMIN, communication.rows[0]!.id],
+    );
+
+    await expect(
+      asUser(ADMIN, "select public.cleanup_abandoned_email_attachments()"),
+    ).rejects.toThrow();
+    const staged = await db.query<{ paths: string[] }>(
+      "select public.cleanup_abandoned_email_attachments() paths",
+    );
+    expect(staged.rows[0]!.paths).toContain("additional/temporary.pdf");
+    expect(staged.rows[0]!.paths).not.toContain("additional/bound.pdf");
+    const state = await db.query<{ id: string; requested: boolean }>(
+      `select id,deletion_requested_at is not null requested
+       from public.email_additional_attachments where id in($1,$2) order by id`,
+      [temporaryId, boundId],
+    );
+    expect(state.rows).toEqual([
+      { id: temporaryId, requested: true },
+      { id: boundId, requested: false },
+    ]);
+    await db.query("select public.finalize_abandoned_email_attachment_cleanup($1::text[])", [
+      ["additional/temporary.pdf"],
+    ]);
+    const retained = await db.query<{ id: string }>(
+      "select id from public.email_additional_attachments where id in($1,$2)",
+      [temporaryId, boundId],
+    );
+    expect(retained.rows).toEqual([{ id: boundId }]);
+  });
+
+  it("returns a bounded authorization-safe People page", async () => {
+    const page = await asUser<{
+      value: { items: Array<{ personId: string }>; pageSize: number; total: number };
+    }>(ADMIN, "select public.list_people_page(null,null,1,2) value");
+    expect(page.rows[0]!.value.pageSize).toBe(2);
+    expect(page.rows[0]!.value.items.length).toBeLessThanOrEqual(2);
+    expect(page.rows[0]!.value.total).toBeGreaterThanOrEqual(page.rows[0]!.value.items.length);
+  });
+
+  it("removes the obsolete email completion RPC from authenticated callers", async () => {
+    const privilege = await db.query<{ allowed: boolean }>(
+      `select has_function_privilege(
+        'authenticated','public.complete_email_task(uuid,uuid,uuid,text,text,text)','EXECUTE'
+      ) allowed`,
+    );
+    expect(privilege.rows[0]!.allowed).toBe(false);
+  });
+
+  it("keeps profile email, System Role and Data Scope out of the general directory", async () => {
+    const directProfiles = await asUser<{ id: string; email: string }>(
+      VIEWER,
+      "select id,email from public.profiles where id<>$1",
+      [VIEWER],
+    );
+    const directRoles = await asUser<{ user_id: string }>(
+      VIEWER,
+      "select user_id from public.user_roles where user_id<>$1",
+      [VIEWER],
+    );
+    const directScopes = await asUser<{ user_id: string }>(
+      VIEWER,
+      "select user_id from public.user_scopes where user_id<>$1",
+      [VIEWER],
+    );
+    expect(directProfiles.rows).toEqual([]);
+    expect(directRoles.rows).toEqual([]);
+    expect(directScopes.rows).toEqual([]);
+
+    const directory = await asUser<{ id: string; name: string }>(
+      VIEWER,
+      "select id,name from public.list_profile_directory()",
+    );
+    expect(directory.rows.length).toBeGreaterThan(1);
   });
 });

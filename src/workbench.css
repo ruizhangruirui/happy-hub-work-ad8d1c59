@@ -195,6 +195,7 @@ button { cursor: pointer; }
 .rostersearch { display:flex; align-items:center; gap:7px; flex:1; max-width:360px; }
 .rostersearch input { width:100%; }
 .rosterpanel { overflow:auto; min-height:280px; background:#fff; border:1px solid var(--line); border-top:0; border-radius:0 0 12px 12px; }
+.pagination { display:flex; align-items:center; justify-content:flex-end; gap:10px; margin-top:14px; color:var(--ink-sub); font-size:12px; }
 .rostertable { width:100%; min-width:1100px; border-collapse:collapse; font-size:13px; }
 .rostertable th { position:sticky; top:0; z-index:1; background:#f5f7fa; color:var(--muted); text-align:left; font-size:11px; letter-spacing:.04em; white-space:nowrap; }
 .rostertable th,.rostertable td { padding:12px 14px; border-bottom:1px solid var(--line); }

@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   getOperationsOverviewFn,
@@ -10,23 +10,13 @@ import {
 } from "@/lib/workbench.functions";
 import type { OperationsOverviewDto, OperationsTaskReportDto } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, functionalTeamLabel } from "@/lib/format";
 import { businessDate } from "@/lib/domain";
 import { exportRows } from "@/lib/export-service";
 import { opErrorMessage } from "@/lib/errors";
 import { Badge, Empty, Icon, Loading } from "@/components/workbench/ui";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Legend,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+
+const OperationsCharts = lazy(() => import("@/components/workbench/OperationsCharts"));
 
 export const Route = createFileRoute("/_authenticated/work")({
   head: () => ({
@@ -59,8 +49,14 @@ export function WorkPage() {
   const [taskSort, setTaskSort] = useState<TaskSort>("dueDate");
   const [taskAscending, setTaskAscending] = useState(true);
   const [taskView, setTaskView] = useState<"all" | "mandatory" | "overdue-mandatory">("all");
+  const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
 
-  const { data: overviewData, isLoading } = useQuery({
+  const {
+    data: overviewData,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: ["operations-overview", filters],
     queryFn: () => fetchOverview({ data: filters }),
   });
@@ -90,6 +86,15 @@ export function WorkPage() {
   }, [overview, taskAscending, taskSort, taskView]);
 
   if (isLoading) return <Loading />;
+  if (isError)
+    return (
+      <Empty
+        icon="alert"
+        title={t("Operations overview could not be loaded.")}
+        action={t("Try again")}
+        onAction={() => void refetch()}
+      />
+    );
   if (!overview) return <Empty icon="alert" title={t("Something went wrong. Please try again.")} />;
 
   const teams = workbench?.teams.map((team) => team.name).sort() ?? [];
@@ -125,31 +130,45 @@ export function WorkPage() {
         : await fetchOverview({ data: emptyFilters }).then((result) =>
             "error" in result ? [] : result.tasks,
           );
-    const result = exportRows(taskExportRows(source), `tasks-${scope}-${businessDate()}`, format, {
-      sheetName: "Operational Tasks",
-      columns: [
-        "Task",
-        "Person",
-        "Case Type",
-        "Owner Team",
-        "Assignee",
-        "Mandatory",
-        "Status",
-        "Due Date",
-        "Completed By",
-        "Completed At",
-      ],
-    });
+    const result = await exportRows(
+      taskExportRows(source),
+      `tasks-${scope}-${businessDate()}`,
+      format,
+      {
+        sheetName: "Operational Tasks",
+        columns: [
+          "Task",
+          "Person",
+          "Case Type",
+          "Owner Team",
+          "Assignee",
+          "Mandatory",
+          "Status",
+          "Due Date",
+          "Completed By",
+          "Completed At",
+        ],
+      },
+    );
     if (!result.exported) toast.info(t("No records to export."));
   };
   const completeTask = async (id: string) => {
-    const result = await toggleTask({ data: { taskId: id, complete: true } });
-    if ("error" in result) toast.error(opErrorMessage(t, result.error));
-    else {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["operations-overview"] }),
-        queryClient.invalidateQueries({ queryKey: ["workbench"] }),
-      ]);
+    if (busyTaskId) return;
+    setBusyTaskId(id);
+    try {
+      const result = await toggleTask({ data: { taskId: id, complete: true } });
+      if ("error" in result) toast.error(opErrorMessage(t, result.error));
+      else {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["operations-overview"] }),
+          queryClient.invalidateQueries({ queryKey: ["workbench"] }),
+        ]);
+        toast.success(t("Task completed"));
+      }
+    } catch {
+      toast.error(t("Something went wrong. Please try again."));
+    } finally {
+      setBusyTaskId(null);
     }
   };
 
@@ -393,7 +412,7 @@ export function WorkPage() {
           </div>
           {overview.taskWorkload.map((row) => (
             <div className="row" key={row.ownerTeam}>
-              <b>{row.ownerTeam}</b>
+              <b>{t(functionalTeamLabel(row.ownerTeam))}</b>
               <span>{row.open}</span>
               <span>{row.overdue}</span>
               <span>{row.dueSoon}</span>
@@ -407,38 +426,16 @@ export function WorkPage() {
       </section>
 
       {overview.reportingMode === "hr" ? (
-        <div className="dashboard analyticsgrid">
-          <DistributionChart
-            title={t("Active People by Employment Type")}
-            data={overview.activeByEmploymentType}
-            color="#4968db"
+        <Suspense fallback={<div className="inlineempty">{t("Loading analytics…")}</div>}>
+          <OperationsCharts
+            employmentTitle={t("Active People by Employment Type")}
+            teamTitle={t("Active People by Team")}
+            trendTitle={t("Join / Leave Trend")}
+            employment={overview.activeByEmploymentType}
+            teams={overview.activeByTeam}
+            trend={overview.monthlyLifecycleTrend}
           />
-          <DistributionChart
-            title={t("Active People by Team")}
-            data={overview.activeByTeam}
-            color="#4f9b78"
-          />
-        </div>
-      ) : null}
-      {overview.reportingMode === "hr" ? (
-        <section className="panel" style={{ marginTop: 22 }}>
-          <div className="panelhead">
-            <b>{t("Join / Leave Trend")}</b>
-          </div>
-          <div style={{ height: 260 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={overview.monthlyLifecycleTrend}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Legend />
-                <Line dataKey="joined" stroke="#4968db" />
-                <Line dataKey="left" stroke="#d56a63" />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
+        </Suspense>
       ) : null}
 
       <section className="panel" style={{ marginTop: 22 }}>
@@ -510,7 +507,7 @@ export function WorkPage() {
                         <small>{task.caseType}</small>
                       </td>
                       <td>{task.person}</td>
-                      <td>{task.ownerTeam}</td>
+                      <td>{t(functionalTeamLabel(task.ownerTeam))}</td>
                       <td>{task.assignee || t("Unassigned")}</td>
                       <td>
                         <Badge>{task.status}</Badge>
@@ -521,12 +518,13 @@ export function WorkPage() {
                         !["Completed", "Not Applicable"].includes(task.status) ? (
                           <button
                             className="secondary"
+                            disabled={busyTaskId !== null}
                             onClick={(event) => {
                               event.stopPropagation();
                               void completeTask(task.id);
                             }}
                           >
-                            {t("Mark Done")}
+                            {busyTaskId === task.id ? t("Saving…") : t("Mark Done")}
                           </button>
                         ) : null}
                       </td>
@@ -568,35 +566,6 @@ function OverviewPanel({
         ) : null}
       </div>
       {children}
-    </section>
-  );
-}
-
-function DistributionChart({
-  title,
-  data,
-  color,
-}: {
-  title: string;
-  data: Array<{ name: string; value: number }>;
-  color: string;
-}) {
-  return (
-    <section className="panel">
-      <div className="panelhead">
-        <b>{title}</b>
-      </div>
-      <div style={{ height: 220 }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="name" />
-            <YAxis allowDecimals={false} />
-            <Tooltip />
-            <Bar dataKey="value" fill={color} radius={[5, 5, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
     </section>
   );
 }

@@ -22,11 +22,12 @@ import {
   updateOffboardingDatesFn,
   setCaseConfirmationFn,
   createExternalRequestFn,
+  deleteCaseFileFn,
 } from "@/lib/workbench.functions";
 import type { CaseDetailDto, WorkbenchData } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
 import { opErrorMessage } from "@/lib/errors";
-import { fmtDate, fmtDateTime } from "@/lib/format";
+import { fmtDate, fmtDateTime, functionalTeamLabel } from "@/lib/format";
 import { taskProgressSummary } from "@/lib/domain";
 import { Badge, Empty, Icon, Loading, Modal } from "@/components/workbench/ui";
 
@@ -341,7 +342,7 @@ function TasksTab({
         return (
           <section className="taskteamgroup" key={team}>
             <div className="taskteamhead">
-              <b>{team}</b>
+              <b>{t(functionalTeamLabel(team))}</b>
               <span>
                 {progress.completed}/{progress.applicable} {t("applicable tasks completed")}
               </span>
@@ -426,7 +427,7 @@ function TasksTab({
                         }}
                       >
                         <option value="">
-                          {t("Unassigned")} · {team}
+                          {t("Unassigned")} · {t(functionalTeamLabel(team))}
                         </option>
                         {candidates.map((user) => (
                           <option value={user.id} key={user.id}>
@@ -493,7 +494,7 @@ function TasksTab({
                 >
                   <option>HR</option>
                   <option>IT</option>
-                  <option>Admin</option>
+                  <option value="Admin">{t("Administration")}</option>
                 </select>
               </label>
               <label>
@@ -1061,7 +1062,7 @@ function ChecklistTab({
                         onChange={(e) => assign(item.id, e.target.value || null)}
                       >
                         <option value="">
-                          {t("Unassigned")} · {item.ownerTeam}
+                          {t("Unassigned")} · {t(functionalTeamLabel(item.ownerTeam))}
                         </option>
                         {candidates.map((u) => (
                           <option key={u.id} value={u.id}>
@@ -1174,19 +1175,32 @@ function FilesTab({
 }) {
   const { t, lang } = useLang();
   const inputRef = useRef<HTMLInputElement>(null);
+  const deleteFile = useServerFn(deleteCaseFileFn);
   const [busy, setBusy] = useState(false);
 
   const upload = async (file: File) => {
+    const allowedTypes = [
+      "application/pdf",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "image/png",
+      "image/jpeg",
+    ];
+    if (file.size > 25 * 1024 * 1024 || !allowedTypes.includes(file.type)) {
+      toast.error(t("Use PDF, DOCX, XLSX, PNG or JPEG files up to 25 MB."));
+      return;
+    }
     setBusy(true);
+    const fileId = crypto.randomUUID();
     try {
-      const path = `${caseId}/${Date.now()}-${file.name}`;
-      const { error: upErr } = await supabase.storage.from("case-files").upload(path, file);
-      if (upErr) throw upErr;
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const path = `${caseId}/${fileId}-${safeName}`;
       const {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) throw new Error("no session");
       const { error: rowErr } = await supabase.from("case_files").insert({
+        id: fileId,
         case_id: caseId,
         storage_path: path,
         filename: file.name,
@@ -1195,6 +1209,11 @@ function FilesTab({
         uploaded_by: user.id,
       });
       if (rowErr) throw rowErr;
+      const { error: upErr } = await supabase.storage.from("case-files").upload(path, file);
+      if (upErr) {
+        await deleteFile({ data: { fileId } });
+        throw upErr;
+      }
       toast.success(t("Saved"));
       refresh();
     } catch {
@@ -1221,15 +1240,20 @@ function FilesTab({
   };
 
   const remove = async (fileId: string) => {
-    const { data: row } = await supabase
-      .from("case_files")
-      .select("storage_path")
-      .eq("id", fileId)
-      .maybeSingle();
-    if (!row) return;
-    await supabase.storage.from("case-files").remove([row.storage_path]);
-    await supabase.from("case_files").delete().eq("id", fileId);
-    refresh();
+    if (!window.confirm(t("Remove this file? This action cannot be undone."))) return;
+    setBusy(true);
+    try {
+      const result = await deleteFile({ data: { fileId } });
+      if ("error" in result) toast.error(opErrorMessage(t, result.error));
+      else {
+        toast.success(t("File removed"));
+        refresh();
+      }
+    } catch {
+      toast.error(t("Something went wrong. Please try again."));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -1241,6 +1265,7 @@ function FilesTab({
             <input
               ref={inputRef}
               type="file"
+              accept=".pdf,.docx,.xlsx,.png,.jpg,.jpeg"
               style={{ display: "none" }}
               onChange={(e) => {
                 const f = e.target.files?.[0];
@@ -1277,7 +1302,7 @@ function FilesTab({
                   {t("Download")}
                 </button>
                 {canManageFiles ? (
-                  <button className="textbutton" onClick={() => remove(f.id)}>
+                  <button className="textbutton" disabled={busy} onClick={() => remove(f.id)}>
                     {t("Delete")}
                   </button>
                 ) : null}

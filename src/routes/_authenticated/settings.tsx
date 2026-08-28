@@ -20,6 +20,7 @@ import type {
 } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
 import { opErrorMessage } from "@/lib/errors";
+import { functionalTeamLabel } from "@/lib/format";
 import { Badge, Empty, Icon, Loading, Modal } from "@/components/workbench/ui";
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -50,7 +51,7 @@ const ROLE_LABELS: Record<string, string> = {
 function SettingsPage() {
   const { t } = useLang();
   const { data, isLoading, isError } = useWorkbench();
-  const [tab, setTab] = useState("Users");
+  const [tab, setTab] = useState("Overview");
   const [editing, setEditing] = useState<UserDto | null>(null);
   const [adding, setAdding] = useState(false);
 
@@ -76,11 +77,13 @@ function SettingsPage() {
       </div>
 
       <div className="tabs">
-        {SETTING_TABS.map((x) => (
-          <button key={x} className={tab === x ? "active" : ""} onClick={() => setTab(x)}>
-            {t(x)}
-          </button>
-        ))}
+        {SETTING_TABS.filter((x) => isAdmin || !["Users", "Roles & Permissions"].includes(x)).map(
+          (x) => (
+            <button key={x} className={tab === x ? "active" : ""} onClick={() => setTab(x)}>
+              {t(x)}
+            </button>
+          ),
+        )}
       </div>
 
       {tab === "Users" ? (
@@ -88,8 +91,8 @@ function SettingsPage() {
           <div className="row head">
             <span>{t("PERSON")}</span>
             <span>{t("Email")}</span>
-            <span>{t("Role / Title")}</span>
-            <span>{t("Scope")}</span>
+            <span>{t("System Role")}</span>
+            <span>{t("Data Scope")}</span>
             <span>{t("STATUS")}</span>
             <span />
           </div>
@@ -157,7 +160,16 @@ function SettingsPage() {
           <div>
             <b>{t("Your access level")}</b>
             <p>
-              {t(wb.currentUser.role)} ·{" "}
+              <strong>{t("System Role")}:</strong> {t(wb.currentUser.role)}
+              <br />
+              <strong>{t("Functional Team")}:</strong>{" "}
+              {wb.currentUser.operationalTeams.length
+                ? wb.currentUser.operationalTeams
+                    .map((team) => t(functionalTeamLabel(team)))
+                    .join(", ")
+                : "—"}
+              <br />
+              <strong>{t("Data Scope")}:</strong>{" "}
               {wb.currentUser.scopes.map((s) => t(s)).join(", ") || t("Assigned Cases")}
             </p>
           </div>
@@ -280,7 +292,7 @@ function UserModal({ wb, user, close }: { wb: WorkbenchData; user?: UserDto; clo
           </label>
           <div className="two">
             <label>
-              {t("Role / Title")}
+              {t("System Role")}
               <select value={form.role} onChange={set("role")}>
                 {ROLES.map((r) => (
                   <option key={r} value={r}>
@@ -298,7 +310,7 @@ function UserModal({ wb, user, close }: { wb: WorkbenchData; user?: UserDto; clo
             </label>
           </div>
           <fieldset className="teamchoices">
-            <legend>{t("Functional Teams")}</legend>
+            <legend>{t("Functional Team")}</legend>
             {(["HR", "IT", "Admin"] as const).map((team) => (
               <label key={team}>
                 <input
@@ -313,13 +325,13 @@ function UserModal({ wb, user, close }: { wb: WorkbenchData; user?: UserDto; clo
                     }))
                   }
                 />{" "}
-                {team}
+                {t(functionalTeamLabel(team))}
               </label>
             ))}
             <small>{t("Functional team membership controls task access on the server.")}</small>
           </fieldset>
           <label>
-            {t("Scope")}
+            {t("Data Scope")}
             <select value={form.scopeType} onChange={set("scopeType")}>
               <option value="all_organization">{t("All Organization")}</option>
               <option value="lab">Lab</option>
@@ -531,7 +543,7 @@ function ChecklistRules({ canManage }: { canManage: boolean }) {
                     onClick={() => setEditing(ruleForm(item))}
                   >
                     <span>
-                      <Badge>{item.ownerTeam}</Badge>
+                      <Badge>{functionalTeamLabel(item.ownerTeam)}</Badge>
                       <Badge>{item.mandatory ? t("Mandatory") : t("Optional")}</Badge>
                     </span>
                     <b>{item.title}</b>
@@ -684,7 +696,7 @@ function ChecklistRuleModal({
             >
               <option>HR</option>
               <option>IT</option>
-              <option>Admin</option>
+              <option value="Admin">{t("Administration")}</option>
             </select>
           </label>
           <label>

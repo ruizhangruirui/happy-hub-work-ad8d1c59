@@ -1,5 +1,3 @@
-import * as XLSX from "xlsx";
-
 export type ExportCell = string | number | boolean | null | undefined;
 export type ExportRow = Record<string, ExportCell>;
 export interface ExportOptions {
@@ -47,12 +45,12 @@ function download(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export function exportRows(
+export async function exportRows(
   rows: ExportRow[],
   name: string,
   format: "csv" | "xlsx",
   options: ExportOptions = {},
-): ExportResult {
+): Promise<ExportResult> {
   if (!rows.length) return { exported: false, reason: "empty" };
   const filename = safeName(name);
   if (format === "csv") {
@@ -62,6 +60,7 @@ export function exportRows(
     );
     return { exported: true };
   }
+  const XLSX = await import("xlsx");
   const safeRows = safeExportRows(rows);
   const sheet = safeRows.length
     ? XLSX.utils.json_to_sheet(safeRows, options.columns ? { header: options.columns } : undefined)

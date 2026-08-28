@@ -19,7 +19,12 @@ export function fmtDateTime(iso: string | null | undefined, lang: "en" | "zh" = 
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "Europe/Zurich",
   }).format(d);
+}
+
+export function functionalTeamLabel(team: string): string {
+  return team === "Admin" ? "Administration" : team;
 }
 
 export function initialsOf(name: string): string {

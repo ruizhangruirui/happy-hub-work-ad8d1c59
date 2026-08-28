@@ -88,10 +88,10 @@ export function CaseList({ caseType }: { caseType: "onboarding" | "offboarding" 
     ...new Set(wb.cases.filter((c) => c.caseType.toLowerCase() === caseType).map((c) => c.status)),
   ];
   const teams = [...new Set(wb.cases.map((c) => c.team))];
-  const exportCases = (scope: "view" | "all", format: "csv" | "xlsx") => {
+  const exportCases = async (scope: "view" | "all", format: "csv" | "xlsx") => {
     const source =
       scope === "view" ? filtered : wb.cases.filter((c) => c.caseType.toLowerCase() === caseType);
-    const result = exportRows(
+    const result = await exportRows(
       source.map((c) => ({
         Person: c.name,
         "Employment Type": c.employmentType,
@@ -307,11 +307,13 @@ function CreateCaseModal({
   const callOffboarding = useServerFn(createOffboardingCaseFn);
   const fetchPeople = useServerFn(getPeopleFn);
   const findCandidates = useServerFn(findOnboardingCandidatesFn);
+  const [offboardingSearch, setOffboardingSearch] = useState("");
   const { data: peopleData } = useQuery({
-    queryKey: ["people"],
-    queryFn: () => fetchPeople(),
+    queryKey: ["people", "offboarding-picker", offboardingSearch],
+    queryFn: () => fetchPeople({ data: { search: offboardingSearch, page: 1, pageSize: 100 } }),
     enabled: caseType === "offboarding",
   });
+  const people = peopleData && !("error" in peopleData) ? peopleData.items : [];
   const [busy, setBusy] = useState(false);
   const [candidates, setCandidates] = useState<PersonCandidateDto[]>([]);
   const [duplicateResolved, setDuplicateResolved] = useState(false);
@@ -362,14 +364,12 @@ function CreateCaseModal({
         }
         setDuplicateResolved(true);
       }
-      const selected = Array.isArray(peopleData)
-        ? peopleData.find((x) => x.employmentId === form.employmentId)
-        : undefined;
+      const selected = people.find((x) => x.employmentId === form.employmentId);
       const res =
         caseType === "offboarding"
           ? await callOffboarding({
               data: {
-                personId: selected?.personId ?? "",
+                personId: form.personId || selected?.personId || "",
                 employmentId: form.employmentId,
                 contractEndDate: form.endDate,
                 lastWorkingDay: form.startDate || undefined,
@@ -428,9 +428,27 @@ function CreateCaseModal({
           <>
             <label>
               {t("Select active person")}
-              <select value={form.employmentId} onChange={set("employmentId")} required>
+              <input
+                value={offboardingSearch}
+                onChange={(event) => setOffboardingSearch(event.target.value)}
+                placeholder={t("Search active people")}
+              />
+              <select
+                value={form.employmentId}
+                onChange={(event) => {
+                  const selectedPerson = people.find(
+                    (person) => person.employmentId === event.target.value,
+                  );
+                  setForm((current) => ({
+                    ...current,
+                    employmentId: event.target.value,
+                    personId: selectedPerson?.personId ?? "",
+                  }));
+                }}
+                required
+              >
                 <option value="">—</option>
-                {(Array.isArray(peopleData) ? peopleData : [])
+                {people
                   .filter((x) => x.employmentId && ["active", "ending"].includes(x.status))
                   .map((x) => (
                     <option key={x.employmentId!} value={x.employmentId!}>
