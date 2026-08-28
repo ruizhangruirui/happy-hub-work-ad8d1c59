@@ -8,11 +8,7 @@ import {
   getWorkbenchDataFn,
   toggleTaskFn,
 } from "@/lib/workbench.functions";
-import type {
-  OperationsOverviewDto,
-  OperationsTaskReportDto,
-  WorkbenchData,
-} from "@/lib/types";
+import type { OperationsOverviewDto, OperationsTaskReportDto, WorkbenchData } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
 import { fmtDate, functionalTeamLabel } from "@/lib/format";
 import { businessDate } from "@/lib/domain";

@@ -84,8 +84,7 @@ export function EmailPage() {
     enabled: Boolean(caseId),
   });
   const templateResult = templateData && !("error" in templateData) ? templateData : null;
-  const detail =
-    detailData && !("error" in detailData) ? (detailData as CaseDetailDto) : null;
+  const detail = detailData && !("error" in detailData) ? (detailData as CaseDetailDto) : null;
   const allTemplates: TemplateDto[] = templateResult?.templates ?? [];
   const caseType = detail?.case.caseType.toLowerCase() ?? "";
   const templates = [...allTemplates].sort(
