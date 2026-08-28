@@ -117,7 +117,7 @@ Object.assign(zh, {
   "TYPE":"类型","DATE":"日期","PRIORITY":"优先级","Scope":"数据范围","Your access level":"您的访问级别",
   "First Name":"名","Last Name":"姓","Role / Title":"职位","Location":"工作地点","Create Case":"创建事项",
   "Personal & Contact":"个人与联系方式","Temporary password (share securely, shown once):":"临时密码（仅显示一次，请安全转达）：",
-  "Close":"关闭","Inactive":"已停用","Assigned Cases":"分配的事项",
+  "Menu":"菜单","Close":"关闭","Inactive":"已停用","Assigned Cases":"分配的事项",
   "This email is already registered.":"该邮箱已注册。","You don't have permission to do that.":"您没有执行此操作的权限。",
   "This item could not be found.":"未找到该条目。","Upload failed. Please try again.":"上传失败，请重试。",
   "Search":"搜索","Search results":"搜索结果","No results found.":"未找到匹配结果。","Cases":"事项","Tasks":"任务","People":"人员",
