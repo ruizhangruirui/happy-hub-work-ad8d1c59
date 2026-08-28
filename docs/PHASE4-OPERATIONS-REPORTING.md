@@ -14,9 +14,11 @@ Phase 4 adds a permission-safe operations reporting layer without changing the P
 
 ## Security and data flow
 
-`get_operations_overview(...)` is the server-side aggregate contract. HR reporting requires `is_hr_user` plus `can_manage_case`, so System Role, Functional Team, and Data Scope are all enforced. Generic Viewer/Collaborator Case membership does not grant Operations reporting and cannot contribute to KPIs, distributions, trends, attention, or exports.
+`get_operations_overview(...)` is the server-side aggregate contract. HR reporting requires `is_hr_user` plus `can_report_hr_case`. The latter follows the existing `case_access` Data Scope resolution (All Organization, Lab, Team, or assigned/specific Case) without requiring the HR user to be Case Owner or Collaborator. Generic Viewer/Collaborator membership alone still does not grant Operations reporting because HR authorization remains mandatory.
 
-The response declares `reportingMode`. HR-authorized users receive people metrics and Case reporting only within their management scope. IT and Administration users receive an `operational` response containing only Tasks for their own functional team and minimum Task context; all people arrays, HR attention, headcount distributions, and lifecycle trends are empty/zero. Viewer and generic Collaborator users without functional membership receive no operational Tasks. `list_operational_tasks` uses the same distinction and no longer treats generic Case access as Task authorization.
+The response declares `reportingMode`. HR-authorized users receive people metrics, all Case Tasks, Mandatory KPIs, workload, Attention, and exports across their Data Scope. In HR mode the reporting RPC reads Tasks from reportable Cases directly; it does not use execution visibility as a reporting filter. IT and Administration users receive an `operational` response containing only Tasks for their own functional team and minimum Task context; all people arrays, HR attention, headcount distributions, and lifecycle trends are empty/zero. Viewer and generic Collaborator users without functional membership receive no operational Tasks.
+
+Reporting visibility is deliberately independent from mutation. `list_operational_tasks`, `can_update_task`, and Task mutation RPCs remain the execution boundary. Seeing an in-scope Task in Operations reporting does not grant status, assignment, comment, completion, or Not Applicable permission; `task.canEdit` and backend authorization remain authoritative.
 
 The report returns KPIs, upcoming joiners/leavers, deterministic attention reasons, HR/IT/Admin workload (including unassigned work), distributions, a 12-month lifecycle trend, active people, and authorized task export rows.
 

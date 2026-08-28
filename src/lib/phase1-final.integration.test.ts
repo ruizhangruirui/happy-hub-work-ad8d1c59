@@ -11,6 +11,7 @@ const MANAGER_B = "77777777-7777-7777-7777-777777777777";
 const IT_USER = "88888888-8888-8888-8888-888888888888";
 const IT_USER_B = "12121212-1212-1212-1212-121212121212";
 const ADMIN_TEAM_USER = "99999999-9999-9999-9999-999999999999";
+const HR_LAB_USER = "abababab-abab-abab-abab-abababababab";
 const TEAM_A = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 const TEAM_B = "cccccccc-cccc-cccc-cccc-cccccccccccc";
 
@@ -1528,5 +1529,117 @@ describe("Phase 4 Closure — permission-safe Operations reporting", () => {
     }
     const left = await operationsReport(ADMIN);
     expect(left.metrics.leftYtd - baseline.metrics.leftYtd).toBe(1);
+  });
+});
+
+describe("Phase 4 Final Patch — HR reporting scope is independent from mutation", () => {
+  it("reports every Team-scoped Case without granting Task edit rights", async () => {
+    const baseline = await operationsReport(MANAGER_A);
+    const a1 = await createOnboarding(MANAGER_A, TEAM_A, "P4-FINAL-A1");
+    const a2 = await createOnboarding(ADMIN, TEAM_A, "P4-FINAL-A2");
+    const b1 = await createOnboarding(ADMIN, TEAM_B, "P4-FINAL-B1");
+    const caseA1 = a1.rows[0]!.result.caseId;
+    const caseA2 = a2.rows[0]!.result.caseId;
+    const caseB1 = b1.rows[0]!.result.caseId;
+
+    expect(
+      (
+        await asUser<{ access: string }>(MANAGER_A, "select public.case_access($1,$2) access", [
+          MANAGER_A,
+          caseA2,
+        ])
+      ).rows[0]!.access,
+    ).toBe("scoped");
+    expect(
+      (
+        await db.query("select id from public.case_members where case_id=$1 and user_id=$2", [
+          caseA2,
+          MANAGER_A,
+        ])
+      ).rows,
+    ).toHaveLength(0);
+
+    await db.query("update public.tasks set status='Completed' where case_id=any($1::uuid[])", [
+      [caseA1, caseA2, caseB1],
+    ]);
+    const taskRows = await db.query<{ id: string; case_id: string }>(
+      `with picked as (
+         select id,case_id,row_number() over(partition by case_id order by created_at) position
+         from public.tasks where case_id=any($1::uuid[]) and owner_team='IT'
+       )
+       update public.tasks t set status='Not Started',mandatory=true,due_date=public.business_date()-1
+       from picked p where t.id=p.id and p.position=1 returning t.id,t.case_id`,
+      [[caseA1, caseA2, caseB1]],
+    );
+    const taskByCase = new Map(taskRows.rows.map((row) => [row.case_id, row.id]));
+
+    const report = await operationsReport(MANAGER_A);
+    const exportedCaseIds = new Set(report.tasks.map((task) => task.caseId));
+    expect(exportedCaseIds.has(caseA1)).toBe(true);
+    expect(exportedCaseIds.has(caseA2)).toBe(true);
+    expect(exportedCaseIds.has(caseB1)).toBe(false);
+    expect(report.metrics.openMandatoryTasks - baseline.metrics.openMandatoryTasks).toBe(2);
+    expect(report.metrics.overdueMandatoryTasks - baseline.metrics.overdueMandatoryTasks).toBe(2);
+
+    const baselineIt = baseline.taskWorkload.find((row) => row.ownerTeam === "IT");
+    const reportIt = report.taskWorkload.find((row) => row.ownerTeam === "IT");
+    expect((reportIt?.open ?? 0) - (baselineIt?.open ?? 0)).toBe(2);
+    expect((reportIt?.overdue ?? 0) - (baselineIt?.overdue ?? 0)).toBe(2);
+    expect(report.attentionCases.map((item) => item.caseId)).toEqual(
+      expect.arrayContaining([caseA1, caseA2]),
+    );
+    expect(report.attentionCases.some((item) => item.caseId === caseB1)).toBe(false);
+
+    const executionTasks = await asUser<{ case_id: string }>(
+      MANAGER_A,
+      "select case_id from public.list_operational_tasks(null)",
+    );
+    expect(executionTasks.rows.some((task) => task.case_id === caseA2)).toBe(false);
+
+    await expect(
+      asUser(MANAGER_A, "select public.set_task_status($1,'Completed',null)", [
+        taskByCase.get(caseA2),
+      ]),
+    ).rejects.toThrow();
+    const allOrganization = await operationsReport(ADMIN);
+    expect(allOrganization.tasks.map((task) => task.caseId)).toEqual(
+      expect.arrayContaining([caseA1, caseA2, caseB1]),
+    );
+  });
+
+  it("uses the existing Lab Data Scope across multiple teams", async () => {
+    const labB = "dededede-dede-dede-dede-dededededede";
+    const teamC = "cdcdcdcd-cdcd-cdcd-cdcd-cdcdcdcdcdcd";
+    await db.query("insert into public.labs(id,name) values($1,'Basel Lab')", [labB]);
+    await db.query("insert into public.teams(id,lab_id,name) values($1,$2,'Storage')", [
+      teamC,
+      labB,
+    ]);
+    await db.query(
+      `insert into auth.users(id,email,raw_user_meta_data)
+       values($1,'hr.lab@example.test','{"name":"HR Lab"}')`,
+      [HR_LAB_USER],
+    );
+    await db.query("update public.profiles set status='Active' where id=$1", [HR_LAB_USER]);
+    await db.query("delete from public.user_roles where user_id=$1", [HR_LAB_USER]);
+    await db.query("insert into public.user_roles(user_id,role) values($1,'manager')", [
+      HR_LAB_USER,
+    ]);
+    await db.query(
+      "insert into public.user_operational_teams(user_id,owner_team) values($1,'HR')",
+      [HR_LAB_USER],
+    );
+    await db.query(
+      "insert into public.user_scopes(user_id,scope_type,lab_id) values($1,'lab','aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')",
+      [HR_LAB_USER],
+    );
+    const network = await createOnboarding(ADMIN, TEAM_A, "P4-LAB-NET");
+    const ai = await createOnboarding(ADMIN, TEAM_B, "P4-LAB-AI");
+    const storage = await createOnboarding(ADMIN, teamC, "P4-LAB-STORAGE");
+    const report = await operationsReport(HR_LAB_USER);
+    const caseIds = report.tasks.map((task) => task.caseId);
+    expect(caseIds).toContain(network.rows[0]!.result.caseId);
+    expect(caseIds).toContain(ai.rows[0]!.result.caseId);
+    expect(caseIds).not.toContain(storage.rows[0]!.result.caseId);
   });
 });
