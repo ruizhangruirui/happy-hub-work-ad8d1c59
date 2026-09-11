@@ -187,3 +187,8 @@ Object.assign(zh, {
   "Add custom field":"添加自定义字段",
   "Custom field":"自定义字段"
 });
+
+Object.assign(zh, {
+  "All execution items are managed here and grouped by responsible team.":"所有办理事项统一在这里管理，并按负责团队分组。",
+  "Offboarding workflow":"离职工作流"
+});

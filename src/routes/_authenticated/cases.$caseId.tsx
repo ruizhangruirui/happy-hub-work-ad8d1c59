@@ -6,7 +6,6 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  assignChecklistOwnerFn,
   assignTaskFn,
   addTaskCommentFn,
   createTaskFn,
@@ -14,7 +13,6 @@ import {
   getWorkbenchDataFn,
   removeMemberFn,
   shareCaseFn,
-  toggleChecklistFn,
   toggleTaskFn,
   setTaskStatusFn,
   syncCaseTasksFn,
@@ -29,6 +27,7 @@ import { useLang } from "@/lib/i18n";
 import { opErrorMessage } from "@/lib/errors";
 import { fmtDate, fmtDateTime, functionalTeamLabel } from "@/lib/format";
 import { taskProgressSummary } from "@/lib/domain";
+import { CASE_DETAIL_TABS, normalizeCaseTab } from "@/lib/case-tabs";
 import { Badge, Empty, Icon, Loading, Modal } from "@/components/workbench/ui";
 
 export const Route = createFileRoute("/_authenticated/cases/$caseId")({
@@ -38,14 +37,12 @@ export const Route = createFileRoute("/_authenticated/cases/$caseId")({
       { title: "Case Detail · Team Workbench" },
       {
         name: "description",
-        content: "Case overview, checklist, communication, files and history.",
+        content: "Case overview, tasks, workflow, communication, files and history.",
       },
     ],
   }),
   component: CaseDetailPage,
 });
-
-const TABS = ["Overview", "Tasks", "Workflow", "Checklist", "Communication", "Files", "History"];
 
 function CaseDetailPage() {
   const { caseId } = Route.useParams();
@@ -60,7 +57,7 @@ function CaseDetailPage() {
     queryFn: () => fetchDetail({ data: { caseId } }),
   });
   const { data: wbData } = useQuery({ queryKey: ["workbench"], queryFn: () => fetchWb() });
-  const [tab, setTab] = useState(TABS.includes(search.tab ?? "") ? search.tab! : "Overview");
+  const [tab, setTab] = useState(normalizeCaseTab(search.tab));
   const [shareOpen, setShareOpen] = useState(false);
   const [confirmationBusy, setConfirmationBusy] = useState(false);
   const setConfirmation = useServerFn(setCaseConfirmationFn);
@@ -197,7 +194,7 @@ function CaseDetailPage() {
       </div>
 
       <div className="tabs">
-        {TABS.map((x) => (
+        {CASE_DETAIL_TABS.map((x) => (
           <button key={x} className={tab === x ? "active" : ""} onClick={() => setTab(x)}>
             {t(x)}
           </button>
@@ -221,9 +218,6 @@ function CaseDetailPage() {
           canManageWorkflow={capabilities.canManageWorkflow}
           refresh={refresh}
         />
-      ) : null}
-      {tab === "Checklist" ? (
-        <ChecklistTab detail={detail} refresh={refresh} caseId={caseId} />
       ) : null}
       {tab === "Communication" ? <CommunicationTab detail={detail} caseId={caseId} /> : null}
       {tab === "Files" ? (
@@ -327,7 +321,7 @@ function TasksTab({
       <div className="panelhead">
         <div>
           <b>{t("Case Tasks")}</b>
-          <p>{t("Shared Case · Team-owned Tasks")}</p>
+          <p>{t("All execution items are managed here and grouped by responsible team.")}</p>
         </div>
         <div className="tasktools">
           {canManageTaskStructure ? (
@@ -603,7 +597,13 @@ function WorkflowTab({
       <div className="panel workflowpanel">
         <div className="panelhead">
           <div>
-            <b>{t("Onboarding workflow")}</b>
+            <b>
+              {t(
+                detail.case.caseType === "Onboarding"
+                  ? "Onboarding workflow"
+                  : "Offboarding workflow",
+              )}
+            </b>
             <p>
               {done} / {detail.workflow.length} {t("steps complete")}
             </p>
@@ -982,122 +982,6 @@ function OffboardingDatesModal({
         </div>
       </form>
     </Modal>
-  );
-}
-
-function ChecklistTab({
-  detail,
-  refresh,
-  caseId,
-}: {
-  detail: CaseDetailDto;
-  refresh: () => void;
-  caseId: string;
-}) {
-  const { t, lang } = useLang();
-  const callToggle = useServerFn(toggleChecklistFn);
-  const callAssign = useServerFn(assignChecklistOwnerFn);
-  const qc = useQueryClient();
-
-  const toggle = async (itemId: string, complete: boolean) => {
-    try {
-      const res = await callToggle({ data: { itemId, complete } });
-      if ("error" in res) {
-        toast.error(opErrorMessage(t, res.error));
-        return;
-      }
-      refresh();
-      qc.invalidateQueries({ queryKey: ["workbench"] });
-    } catch {
-      toast.error(t("Something went wrong. Please try again."));
-    }
-  };
-
-  const assign = async (itemId: string, ownerId: string | null) => {
-    try {
-      const res = await callAssign({ data: { itemId, ownerId } });
-      if ("error" in res) {
-        toast.error(opErrorMessage(t, res.error));
-        return;
-      }
-      refresh();
-    } catch {
-      toast.error(t("Something went wrong. Please try again."));
-    }
-  };
-
-  if (detail.checklist.length === 0) {
-    return <Empty icon="check" title={t("No checklist items yet.")} />;
-  }
-
-  const sections = [...new Set(detail.checklist.map((c) => c.section))];
-  return (
-    <div className="panel">
-      {sections.map((section) => (
-        <div key={section}>
-          <div className="panelhead" style={{ marginTop: 8 }}>
-            <b>{section}</b>
-          </div>
-          <div className="checklist">
-            {detail.checklist
-              .filter((item) => item.section === section)
-              .map((item) => {
-                const done = item.status === "Completed";
-                const resolved = done || item.status === "Not Required";
-                const candidates = detail.assignableUsers.filter((user) =>
-                  user.operationalTeams.includes(item.ownerTeam),
-                );
-                return (
-                  <div className="checkrow" key={item.id}>
-                    <button
-                      className={`taskcheck${resolved ? " done" : ""}`}
-                      disabled={!item.canEdit}
-                      onClick={() => toggle(item.id, !resolved)}
-                      aria-label={resolved ? t("Reopen") : t("Mark Done")}
-                    >
-                      <Icon name="check" />
-                    </button>
-                    <div className="taskmain">
-                      <b
-                        style={done ? { textDecoration: "line-through", opacity: 0.6 } : undefined}
-                      >
-                        {item.title}
-                      </b>
-                      <span>
-                        {item.dueDate ? `${t("due")} ${fmtDate(item.dueDate, lang)}` : ""}
-                        {item.completedByName
-                          ? ` · ${t("Completed by")} ${item.completedByName}`
-                          : ""}
-                      </span>
-                      {item.status === "Not Required" ? <Badge>{t("Not Applicable")}</Badge> : null}
-                    </div>
-                    {item.canEdit ? (
-                      <select
-                        className="ownerselect"
-                        value={item.ownerId ?? ""}
-                        onChange={(e) => assign(item.id, e.target.value || null)}
-                      >
-                        <option value="">
-                          {t("Unassigned")} · {t(functionalTeamLabel(item.ownerTeam))}
-                        </option>
-                        {candidates.map((u) => (
-                          <option key={u.id} value={u.id}>
-                            {u.name}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <span>{item.ownerName || t("Unassigned")}</span>
-                    )}
-                    <Badge>{item.status}</Badge>
-                  </div>
-                );
-              })}
-          </div>
-        </div>
-      ))}
-      <p style={{ display: "none" }}>{caseId}</p>
-    </div>
   );
 }
 
