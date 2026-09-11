@@ -44,10 +44,8 @@ export function WorkPage() {
   const fetchOverview = useServerFn(getOperationsOverviewFn);
   const fetchWorkbench = useServerFn(getWorkbenchDataFn);
   const toggleTask = useServerFn(toggleTaskFn);
-  const [filters, setFilters] = useState(emptyFilters);
   const [taskSort, setTaskSort] = useState<TaskSort>("dueDate");
   const [taskAscending, setTaskAscending] = useState(true);
-  const [taskView, setTaskView] = useState<"all" | "mandatory" | "overdue-mandatory">("all");
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
   const [locallyCompletedTaskIds, setLocallyCompletedTaskIds] = useState<string[]>([]);
 
@@ -57,8 +55,8 @@ export function WorkPage() {
     isError,
     refetch,
   } = useQuery({
-    queryKey: ["operations-overview", filters],
-    queryFn: () => fetchOverview({ data: filters }),
+    queryKey: ["operations-overview", emptyFilters],
+    queryFn: () => fetchOverview({ data: emptyFilters }),
   });
   const { data: workbenchData } = useQuery({
     queryKey: ["workbench"],
@@ -73,20 +71,14 @@ export function WorkPage() {
     return tasksForOperationalTeams(overview.tasks, workbench.currentUser.operationalTeams)
       .filter(
         (task) =>
-          !isArchivedOperationalTask(task.status) &&
-          !locallyCompletedTaskIds.includes(task.id) &&
-          (taskView === "all" ||
-            (task.mandatory &&
-              ["Not Started", "Open", "In Progress", "Waiting", "Blocked"].includes(task.status) &&
-              (taskView === "mandatory" ||
-                Boolean(task.dueDate && task.dueDate < overview.businessDate)))),
+          !isArchivedOperationalTask(task.status) && !locallyCompletedTaskIds.includes(task.id),
       )
       .sort(
         (a, b) =>
           String(a[taskSort] ?? "9999").localeCompare(String(b[taskSort] ?? "9999")) *
           (taskAscending ? 1 : -1),
       );
-  }, [locallyCompletedTaskIds, overview, taskAscending, taskSort, taskView, workbench]);
+  }, [locallyCompletedTaskIds, overview, taskAscending, taskSort, workbench]);
 
   const archivedTasks = useMemo(() => {
     if (!overview || !workbench) return [];
@@ -110,10 +102,6 @@ export function WorkPage() {
     );
   if (!overview) return <Empty icon="alert" title={t("Something went wrong. Please try again.")} />;
 
-  const teams = workbench?.teams.map((team) => team.name).sort() ?? [];
-  const statuses = [...new Set(workbench?.cases.map((item) => item.status) ?? [])].sort();
-  const updateFilter = (key: keyof typeof filters, value: string) =>
-    setFilters((current) => ({ ...current, [key]: value }));
   const openCase = (caseId: string) =>
     navigate({ to: "/cases/$caseId", params: { caseId }, search: {} });
   const setTaskSortKey = (key: TaskSort) => {
@@ -227,112 +215,6 @@ export function WorkPage() {
         ) : null}
       </div>
 
-      <div className="filterbar">
-        <select value={filters.team} onChange={(event) => updateFilter("team", event.target.value)}>
-          <option value="">{t("All Teams")}</option>
-          {teams.map((team) => (
-            <option key={team}>{team}</option>
-          ))}
-        </select>
-        <select
-          value={filters.employmentType}
-          onChange={(event) => updateFilter("employmentType", event.target.value)}
-        >
-          <option value="">{t("All Types")}</option>
-          {["Employee", "Intern", "Leased Labour"].map((type) => (
-            <option key={type}>{type}</option>
-          ))}
-        </select>
-        <select
-          value={filters.caseType}
-          onChange={(event) => updateFilter("caseType", event.target.value)}
-        >
-          <option value="">{t("All Case Types")}</option>
-          <option value="Onboarding">{t("Onboarding")}</option>
-          <option value="Offboarding">{t("Offboarding")}</option>
-        </select>
-        <select
-          value={filters.status}
-          onChange={(event) => updateFilter("status", event.target.value)}
-        >
-          <option value="">{t("All Status")}</option>
-          {statuses.map((status) => (
-            <option key={status}>{status}</option>
-          ))}
-        </select>
-        <label>
-          <span>
-            {t(
-              filters.caseType === "Onboarding"
-                ? "Start Date From"
-                : filters.caseType === "Offboarding"
-                  ? "Leaving Date From"
-                  : "Operational Date From",
-            )}
-          </span>
-          <input
-            type="date"
-            value={filters.dateFrom}
-            onChange={(event) => updateFilter("dateFrom", event.target.value)}
-          />
-        </label>
-        <label>
-          <span>
-            {t(
-              filters.caseType === "Onboarding"
-                ? "Start Date To"
-                : filters.caseType === "Offboarding"
-                  ? "Leaving Date To"
-                  : "Operational Date To",
-            )}
-          </span>
-          <input
-            type="date"
-            value={filters.dateTo}
-            onChange={(event) => updateFilter("dateTo", event.target.value)}
-          />
-        </label>
-        {Object.values(filters).some(Boolean) ? (
-          <button className="clear" onClick={() => setFilters(emptyFilters)}>
-            <Icon name="x" /> {t("Clear")}
-          </button>
-        ) : null}
-      </div>
-
-      <div className="rosterstats">
-        {(overview.reportingMode === "hr"
-          ? ([
-              ["Active People", overview.metrics.activePeople],
-              ["Pre-boarding", overview.metrics.preboarding],
-              ["Leaving", overview.metrics.leaving],
-              ["Joined YTD", overview.metrics.joinedYtd],
-              ["Left YTD", overview.metrics.leftYtd],
-              ["Open Mandatory Tasks", overview.metrics.openMandatoryTasks],
-              ["Overdue Mandatory Tasks", overview.metrics.overdueMandatoryTasks],
-            ] as const)
-          : ([
-              ["Open Mandatory Tasks", overview.metrics.openMandatoryTasks],
-              ["Overdue Mandatory Tasks", overview.metrics.overdueMandatoryTasks],
-            ] as const)
-        ).map(([label, value]) => (
-          <button
-            className="statcard"
-            key={label}
-            onClick={() => {
-              if (label === "Open Mandatory Tasks") setTaskView("mandatory");
-              if (label === "Overdue Mandatory Tasks") setTaskView("overdue-mandatory");
-              if (label.includes("Mandatory"))
-                document
-                  .getElementById("operational-tasks")
-                  ?.scrollIntoView({ behavior: "smooth" });
-            }}
-          >
-            <span>{t(label)}</span>
-            <strong>{value}</strong>
-          </button>
-        ))}
-      </div>
-
       {overview.reportingMode === "hr" ? (
         <div className="attentionoverview">
           <OverviewPanel
@@ -379,11 +261,6 @@ export function WorkPage() {
               {t("Only tasks for your functional team are shown.")}
             </small>
           </div>
-          {taskView !== "all" ? (
-            <button className="clear" onClick={() => setTaskView("all")}>
-              <Icon name="x" /> {t("Clear Task View")}
-            </button>
-          ) : null}
           <div className="actions">
             <button className="secondary" onClick={() => void exportTasks("current-view", "csv")}>
               {t("Export Current View")} CSV
