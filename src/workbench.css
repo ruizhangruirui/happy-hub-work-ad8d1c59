@@ -967,6 +967,11 @@ button { cursor: pointer; }
   gap: 16px;
 }
 
+.overviewactions { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.modal:has(.caseeditform) { max-width: 880px; }
+.caseeditform fieldset { border: 1px solid var(--line); border-radius: var(--r-md); padding: 14px; }
+.caseeditform legend { color: var(--ink); font-size: 13px; font-weight: 700; padding: 0 6px; }
+
 .detailcard {
   background: #fff;
   border: 1px solid var(--line);

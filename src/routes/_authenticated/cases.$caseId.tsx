@@ -17,6 +17,7 @@ import {
   syncCaseTasksFn,
   updateWorkflowItemFn,
   updateOffboardingDatesFn,
+  updateCaseDetailsFn,
   setCaseConfirmationFn,
   createExternalRequestFn,
 } from "@/lib/workbench.functions";
@@ -200,7 +201,12 @@ function CaseDetailPage() {
       </div>
 
       {tab === "Overview" ? (
-        <OverviewTab detail={detail} canManageCase={capabilities.canManageCase} refresh={refresh} />
+        <OverviewTab
+          detail={detail}
+          canManageCase={capabilities.canManageCase}
+          refresh={refresh}
+          teams={wb?.teams ?? []}
+        />
       ) : null}
       {tab === "Tasks" ? (
         <TasksTab
@@ -811,118 +817,334 @@ function OverviewTab({
   detail,
   canManageCase,
   refresh,
+  teams,
 }: {
   detail: CaseDetailDto;
   canManageCase: boolean;
   refresh: () => void;
+  teams: Array<{ id: string; name: string; status: string }>;
 }) {
   const { t } = useLang();
   const c = detail.case;
   const qc = useQueryClient();
-  const updateDates = useServerFn(updateOffboardingDatesFn);
-  const [dateOpen, setDateOpen] = useState(false);
-  const saveDates = async (values: { contractEndDate: string; lastWorkingDay: string }) => {
+  const [editOpen, setEditOpen] = useState(false);
+  return (
+    <div>
+      {canManageCase ? (
+        <div className="overviewactions">
+          <button className="primary" onClick={() => setEditOpen(true)}>
+            <Icon name="edit" /> {t("Edit all information")}
+          </button>
+        </div>
+      ) : null}
+      <div className="overviewgrid">
+        <div className="detailcard">
+          <b>{t("Personal & Contact")}</b>
+          <div className="fields">
+            <Field label="Email" value={c.personEmail} />
+            <Field label="Employee ID" value={c.employeeId} />
+            <Field label="Phone" value={c.phone} />
+            <Field label="Manager" value={c.managerName} />
+            <Field label={t("Supervisor")} value={c.supervisorName} />
+            <Field label={t("Supervisor Email")} value={c.supervisorEmail} />
+          </div>
+        </div>
+        <div className="detailcard">
+          <b>{t("Job Details")}</b>
+          <div className="fields">
+            <Field label="Role / Title" value={c.role} />
+            <Field label="TEAM" value={c.team} />
+            <Field label="Location" value={c.location} />
+            <Field label="Employment Type" value={t(c.employmentType)} />
+            <Field label="Workload" value={c.workload} />
+            <Field label="Contract Type" value={c.contractType} />
+          </div>
+        </div>
+        <div className="detailcard">
+          <div className="panelhead">
+            <b>{t("Timeline")}</b>
+          </div>
+          <div className="fields">
+            <Field label="Start Date" value={c.startDate} />
+            {c.caseType === "Offboarding" ? (
+              <>
+                <Field label="Contract End Date" value={c.contractEndDate} />
+                <Field label="Last Working Day" value={c.lastWorkingDay ?? t("Not confirmed")} />
+                <Field label="Confirmed Leaving Date" value={c.leftDate} />
+              </>
+            ) : (
+              <Field label="Joined Date" value={c.joinedDate} />
+            )}
+            <Field label="OWNER" value={c.owner} />
+          </div>
+        </div>
+        <div className="detailcard">
+          <b>{c.notes !== null ? t("Notes") : t("Notes (restricted)")}</b>
+          {c.notes !== null ? (
+            <p
+              style={{
+                margin: "4px 0 0",
+                fontSize: 12,
+                color: "var(--ink-sub)",
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {c.notes}
+            </p>
+          ) : (
+            <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--ink-sub)" }}>
+              <Icon name="lock" />{" "}
+              {t("Restricted field: visible to authorized HR case managers only.")}
+            </p>
+          )}
+        </div>
+      </div>
+      {editOpen ? (
+        <CaseEditModal
+          detail={detail}
+          teams={teams}
+          close={() => setEditOpen(false)}
+          saved={async () => {
+            await Promise.all([
+              refresh(),
+              qc.invalidateQueries({ queryKey: ["workbench"] }),
+              qc.invalidateQueries({ queryKey: ["people"] }),
+              qc.invalidateQueries({ queryKey: ["active-roster"] }),
+              qc.invalidateQueries({ queryKey: ["operations-overview"] }),
+            ]);
+            setEditOpen(false);
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function CaseEditModal({
+  detail,
+  teams,
+  close,
+  saved,
+}: {
+  detail: CaseDetailDto;
+  teams: Array<{ id: string; name: string; status: string }>;
+  close: () => void;
+  saved: () => Promise<void>;
+}) {
+  const { t } = useLang();
+  const update = useServerFn(updateCaseDetailsFn);
+  const c = detail.case;
+  const fallbackNames = c.name.trim().split(/\s+/);
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState({
+    givenName: c.givenName ?? fallbackNames[0] ?? "",
+    familyName: c.familyName ?? fallbackNames.slice(1).join(" "),
+    preferredName: c.preferredName ?? "",
+    personalEmail: c.personEmail ?? "",
+    companyEmail: c.companyEmail ?? "",
+    employeeId: c.employeeId ?? "",
+    phone: c.phone ?? "",
+    teamId: c.teamId ?? "",
+    employmentType: c.employmentType,
+    role: c.role ?? "",
+    location: c.location ?? "",
+    supervisorName: c.supervisorName ?? "",
+    supervisorEmail: c.supervisorEmail ?? "",
+    workload: c.workload ?? "",
+    contractType: c.contractType ?? "",
+    startDate: c.startDate ?? "",
+    contractEndDate: c.contractEndDate ?? "",
+    lastWorkingDay: c.lastWorkingDay ?? "",
+    leavingType: c.leavingType ?? "",
+    leavingReason: c.leavingReason ?? "",
+    priority: c.priority,
+    notes: c.notes ?? "",
+    visaRequired: c.visaRequired,
+  });
+  const set = (key: keyof typeof form) => (event: { target: { value: string } }) =>
+    setForm((current) => ({ ...current, [key]: event.target.value }));
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
     try {
-      const result = await updateDates({
+      const result = await update({
         data: {
+          ...form,
           caseId: c.id,
-          contractEndDate: values.contractEndDate,
-          lastWorkingDay: values.lastWorkingDay || undefined,
+          teamId: form.teamId || null,
+          employmentType: form.employmentType as "Employee" | "Intern" | "Leased Labour",
+          priority: form.priority as "High" | "Medium" | "Low",
+          workload: form.workload === "" ? null : Number(form.workload),
         },
       });
-      if ("error" in result) {
-        toast.error(opErrorMessage(t, result.error));
-        return;
+      if ("error" in result) toast.error(opErrorMessage(t, result.error));
+      else {
+        await saved();
+        toast.success(t("Case information updated"));
       }
-      await Promise.all([
-        refresh(),
-        qc.invalidateQueries({ queryKey: ["workbench"] }),
-        qc.invalidateQueries({ queryKey: ["active-roster"] }),
-      ]);
-      setDateOpen(false);
-      toast.success(t("Saved"));
     } catch {
       toast.error(t("Something went wrong. Please try again."));
+    } finally {
+      setBusy(false);
     }
   };
   return (
-    <div className="overviewgrid">
-      <div className="detailcard">
-        <b>{t("Personal & Contact")}</b>
-        <div className="fields">
-          <Field label="Email" value={c.personEmail} />
-          <Field label="Employee ID" value={c.employeeId} />
-          <Field label="Phone" value={c.phone} />
-          <Field label="Manager" value={c.managerName} />
-          <Field label={t("Supervisor")} value={c.supervisorName} />
-          <Field label={t("Supervisor Email")} value={c.supervisorEmail} />
+    <Modal title={t("Edit Case Information")} close={close}>
+      <form className="userform caseeditform" onSubmit={submit}>
+        <fieldset>
+          <legend>{t("Personal & Contact")}</legend>
+          <div className="userform two compact">
+            <label>
+              {t("First Name")}
+              <input required value={form.givenName} onChange={set("givenName")} />
+            </label>
+            <label>
+              {t("Last Name")}
+              <input required value={form.familyName} onChange={set("familyName")} />
+            </label>
+            <label>
+              {t("Preferred Name")}
+              <input value={form.preferredName} onChange={set("preferredName")} />
+            </label>
+            <label>
+              {t("Personal Email")}
+              <input type="email" value={form.personalEmail} onChange={set("personalEmail")} />
+            </label>
+            <label>
+              {t("Company Email")}
+              <input type="email" value={form.companyEmail} onChange={set("companyEmail")} />
+            </label>
+            <label>
+              {t("Employee ID")}
+              <input value={form.employeeId} onChange={set("employeeId")} />
+            </label>
+            <label>
+              {t("Phone")}
+              <input value={form.phone} onChange={set("phone")} />
+            </label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>{t("Job Details")}</legend>
+          <div className="userform two compact">
+            <label>
+              {t("Employment Type")}
+              <select value={form.employmentType} onChange={set("employmentType")}>
+                {["Employee", "Intern", "Leased Labour"].map((x) => (
+                  <option key={x}>{x}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              {t("Team")}
+              <select value={form.teamId} onChange={set("teamId")}>
+                <option value="">—</option>
+                {teams
+                  .filter((x) => x.status === "Active")
+                  .map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label>
+              {t("Role / Title")}
+              <input value={form.role} onChange={set("role")} />
+            </label>
+            <label>
+              {t("Location")}
+              <input value={form.location} onChange={set("location")} />
+            </label>
+            <label>
+              {t("Supervisor")}
+              <input value={form.supervisorName} onChange={set("supervisorName")} />
+            </label>
+            <label>
+              {t("Supervisor Email")}
+              <input type="email" value={form.supervisorEmail} onChange={set("supervisorEmail")} />
+            </label>
+            <label>
+              {t("Workload")}
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={form.workload}
+                onChange={set("workload")}
+              />
+            </label>
+            <label>
+              {t("Contract Type")}
+              <input value={form.contractType} onChange={set("contractType")} />
+            </label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>{t("Timeline")}</legend>
+          <div className="userform two compact">
+            <label>
+              {t("Start Date")}
+              <input required type="date" value={form.startDate} onChange={set("startDate")} />
+            </label>
+            {c.caseType === "Offboarding" ? (
+              <>
+                <label>
+                  {t("Contract End Date")}
+                  <input
+                    required
+                    type="date"
+                    value={form.contractEndDate}
+                    onChange={set("contractEndDate")}
+                  />
+                </label>
+                <label>
+                  {t("Last Working Day")}
+                  <input type="date" value={form.lastWorkingDay} onChange={set("lastWorkingDay")} />
+                </label>
+                <label>
+                  {t("Leaving Type")}
+                  <input value={form.leavingType} onChange={set("leavingType")} />
+                </label>
+                <label>
+                  {t("Leaving Reason")}
+                  <textarea rows={2} value={form.leavingReason} onChange={set("leavingReason")} />
+                </label>
+              </>
+            ) : (
+              <label className="workflowcheck">
+                <input
+                  type="checkbox"
+                  checked={form.visaRequired}
+                  onChange={(e) => setForm({ ...form, visaRequired: e.target.checked })}
+                />
+                {t("Visa / work permit required")}
+              </label>
+            )}
+            <label>
+              {t("Priority")}
+              <select value={form.priority} onChange={set("priority")}>
+                {["High", "Medium", "Low"].map((x) => (
+                  <option key={x}>{x}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </fieldset>
+        <label>
+          {t("Notes")}
+          <textarea rows={3} maxLength={2000} value={form.notes} onChange={set("notes")} />
+        </label>
+        <div className="modalactions">
+          <button type="button" className="secondary" onClick={close}>
+            {t("Cancel")}
+          </button>
+          <button className="primary" disabled={busy}>
+            {busy ? t("Saving…") : t("Save Changes")}
+          </button>
         </div>
-      </div>
-      <div className="detailcard">
-        <b>{t("Job Details")}</b>
-        <div className="fields">
-          <Field label="Role / Title" value={c.role} />
-          <Field label="TEAM" value={c.team} />
-          <Field label="Location" value={c.location} />
-          <Field label="Employment Type" value={t(c.employmentType)} />
-          <Field label="Workload" value={c.workload} />
-          <Field label="Contract Type" value={c.contractType} />
-        </div>
-      </div>
-      <div className="detailcard">
-        <div className="panelhead">
-          <b>{t("Timeline")}</b>
-          {c.caseType === "Offboarding" && canManageCase ? (
-            <button className="secondary" onClick={() => setDateOpen(true)}>
-              {t("Edit dates")}
-            </button>
-          ) : null}
-        </div>
-        <div className="fields">
-          <Field label="Start Date" value={c.startDate} />
-          {c.caseType === "Offboarding" ? (
-            <>
-              <Field label="Contract End Date" value={c.contractEndDate} />
-              <Field label="Last Working Day" value={c.lastWorkingDay ?? t("Not confirmed")} />
-              <Field label="Confirmed Leaving Date" value={c.leftDate} />
-            </>
-          ) : (
-            <Field label="Joined Date" value={c.joinedDate} />
-          )}
-          <Field label="OWNER" value={c.owner} />
-        </div>
-      </div>
-      {dateOpen ? (
-        <OffboardingDatesModal
-          initial={{
-            contractEndDate: c.contractEndDate ?? "",
-            lastWorkingDay: c.lastWorkingDay ?? "",
-          }}
-          close={() => setDateOpen(false)}
-          save={saveDates}
-        />
-      ) : null}
-      <div className="detailcard">
-        <b>{c.notes !== null ? t("Notes") : t("Notes (restricted)")}</b>
-        {c.notes !== null ? (
-          <p
-            style={{
-              margin: "4px 0 0",
-              fontSize: 12,
-              color: "var(--ink-sub)",
-              whiteSpace: "pre-wrap",
-            }}
-          >
-            {c.notes}
-          </p>
-        ) : (
-          <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--ink-sub)" }}>
-            <Icon name="lock" />{" "}
-            {t("Restricted field: visible to authorized HR case managers only.")}
-          </p>
-        )}
-      </div>
-    </div>
+      </form>
+    </Modal>
   );
 }
 

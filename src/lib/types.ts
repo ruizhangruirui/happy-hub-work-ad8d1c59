@@ -309,6 +309,7 @@ export interface EmailCommunicationDto {
 export interface CaseDetailDto {
   case: CaseDto & {
     givenName: string | null;
+    familyName: string | null;
     preferredName: string | null;
     personEmail: string | null;
     companyEmail: string | null;
@@ -318,6 +319,8 @@ export interface CaseDetailDto {
     workload: string | null;
     contractType: string | null;
     leavingReason: string | null;
+    teamId: string | null;
+    visaRequired: boolean;
     notes: string | null;
   };
   checklist: ChecklistDto[];

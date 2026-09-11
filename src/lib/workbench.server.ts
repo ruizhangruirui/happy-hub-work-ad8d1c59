@@ -369,7 +369,7 @@ export async function getCaseDetail(
     const { data: fullRow, error } = await supabase
       .from("cases")
       .select(
-        "*, persons(full_name, given_name, preferred_name, email, employee_id, phone, lab_id, team_id, teams(name), manager:manager_id(full_name)), employments!cases_employment_id_fkey(company_email,workload)",
+        "*, persons(full_name, given_name, family_name, preferred_name, email, employee_id, phone, lab_id, team_id, teams(name), manager:manager_id(full_name)), employments!cases_employment_id_fkey(company_email,workload)",
       )
       .eq("id", caseId)
       .maybeSingle();
@@ -618,6 +618,7 @@ export async function getCaseDetail(
       personEmail: person.email ?? null,
       companyEmail: r.employments?.company_email ?? null,
       givenName: person.given_name ?? null,
+      familyName: person.family_name ?? null,
       preferredName: person.preferred_name ?? null,
       employeeId: person.employee_id ?? null,
       phone: person.phone ?? null,
@@ -625,6 +626,8 @@ export async function getCaseDetail(
       workload: r.workload ?? null,
       contractType: r.contract_type ?? null,
       leavingReason: r.leaving_reason ?? null,
+      teamId: person.team_id ?? null,
+      visaRequired: Boolean(r.visa_required),
       notes: canSeeNotes ? (r.notes ?? null) : null,
     },
     checklist,
@@ -937,6 +940,72 @@ export async function updateOffboardingDates(
     throw new Error(error.message);
   }
   return { ok: true as const };
+}
+
+export interface UpdateCaseDetailsInput {
+  caseId: string;
+  givenName: string;
+  familyName: string;
+  preferredName?: string | undefined;
+  personalEmail?: string | undefined;
+  companyEmail?: string | undefined;
+  employeeId?: string | undefined;
+  phone?: string | undefined;
+  teamId?: string | null | undefined;
+  employmentType: string;
+  role?: string | undefined;
+  location?: string | undefined;
+  supervisorName?: string | undefined;
+  supervisorEmail?: string | undefined;
+  workload?: number | null | undefined;
+  contractType?: string | undefined;
+  startDate: string;
+  contractEndDate?: string | undefined;
+  lastWorkingDay?: string | undefined;
+  leavingType?: string | undefined;
+  leavingReason?: string | undefined;
+  priority: "High" | "Medium" | "Low";
+  notes?: string | undefined;
+  visaRequired?: boolean | undefined;
+}
+
+export async function updateCaseDetails(
+  supabase: Db,
+  userId: string,
+  input: UpdateCaseDetailsInput,
+) {
+  if (!(await loadIdentity(supabase, userId))) return { error: "forbidden" as const };
+  const { data, error } = await supabase.rpc("update_case_details", {
+    _case_id: input.caseId,
+    _given_name: input.givenName,
+    _family_name: input.familyName,
+    _preferred_name: input.preferredName || null,
+    _personal_email: input.personalEmail || null,
+    _company_email: input.companyEmail || null,
+    _employee_id: input.employeeId || null,
+    _phone: input.phone || null,
+    _team_id: input.teamId || null,
+    _employment_type: input.employmentType,
+    _role: input.role || null,
+    _location: input.location || null,
+    _supervisor_name: input.supervisorName || null,
+    _supervisor_email: input.supervisorEmail || null,
+    _workload: input.workload ?? null,
+    _contract_type: input.contractType || null,
+    _start_date: input.startDate,
+    _contract_end_date: input.contractEndDate || null,
+    _last_working_day: input.lastWorkingDay || null,
+    _leaving_type: input.leavingType || null,
+    _leaving_reason: input.leavingReason || null,
+    _priority: input.priority,
+    _notes: input.notes || null,
+    _visa_required: input.visaRequired ?? false,
+  });
+  if (error) {
+    if (error.code === "42501") return { error: "forbidden" as const };
+    throw new Error(error.message);
+  }
+  return { ok: true as const, caseId: (data as any).caseId as string };
 }
 
 function peopleRow(row: any): PeopleRowDto {

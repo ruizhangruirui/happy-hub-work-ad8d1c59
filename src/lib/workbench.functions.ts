@@ -32,6 +32,42 @@ export const getCaseDetailFn = createServerFn({ method: "GET" })
     wb.getCaseDetail(context.supabase as wb.Db, context.userId, data.caseId),
   );
 
+export const updateCaseDetailsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data) =>
+    z
+      .object({
+        caseId: z.string().uuid(),
+        givenName: z.string().min(1).max(60),
+        familyName: z.string().min(1).max(60),
+        preferredName: z.string().max(60).optional(),
+        personalEmail: z.union([z.string().email(), z.literal("")]).optional(),
+        companyEmail: z.union([z.string().email(), z.literal("")]).optional(),
+        employeeId: z.string().max(80).optional(),
+        phone: z.string().max(80).optional(),
+        teamId: z.string().uuid().nullable().optional(),
+        employmentType: z.enum(["Employee", "Intern", "Leased Labour"]),
+        role: z.string().max(120).optional(),
+        location: z.string().max(120).optional(),
+        supervisorName: z.string().max(120).optional(),
+        supervisorEmail: z.union([z.string().email(), z.literal("")]).optional(),
+        workload: z.number().int().min(0).max(100).nullable().optional(),
+        contractType: z.string().max(120).optional(),
+        startDate: z.string().date(),
+        contractEndDate: z.union([z.string().date(), z.literal("")]).optional(),
+        lastWorkingDay: z.union([z.string().date(), z.literal("")]).optional(),
+        leavingType: z.string().max(80).optional(),
+        leavingReason: z.string().max(500).optional(),
+        priority: z.enum(["High", "Medium", "Low"]),
+        notes: z.string().max(2000).optional(),
+        visaRequired: z.boolean().optional(),
+      })
+      .parse(data),
+  )
+  .handler(({ data, context }) =>
+    wb.updateCaseDetails(context.supabase as wb.Db, context.userId, data),
+  );
+
 export const shareCaseFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data) =>

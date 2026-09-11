@@ -198,3 +198,12 @@ Object.assign(zh, {
   "active":"在职",
   "ending":"即将离职"
 });
+
+Object.assign(zh, {
+  "Edit all information":"编辑全部信息",
+  "Edit Case Information":"编辑事项信息",
+  "Case information updated":"事项信息已更新",
+  "Preferred Name":"常用名",
+  "Leaving Type":"离职类型",
+  "Leaving Reason":"离职原因"
+});
