@@ -2143,6 +2143,35 @@ export type Database = {
         Args: { _case_id: string; _confirm: boolean }
         Returns: Json
       }
+      update_case_details: {
+        Args: {
+          _case_id: string
+          _company_email: string
+          _contract_end_date: string
+          _contract_type: string
+          _employee_id: string
+          _employment_type: string
+          _family_name: string
+          _given_name: string
+          _last_working_day: string
+          _leaving_reason: string
+          _leaving_type: string
+          _location: string
+          _notes: string
+          _personal_email: string
+          _phone: string
+          _preferred_name: string
+          _priority: string
+          _role: string
+          _start_date: string
+          _supervisor_email: string
+          _supervisor_name: string
+          _team_id: string
+          _visa_required: boolean
+          _workload: number
+        }
+        Returns: Json
+      }
       update_offboarding_dates: {
         Args: {
           _case_id: string
