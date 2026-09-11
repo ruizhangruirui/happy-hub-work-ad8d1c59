@@ -1937,6 +1937,7 @@ export type Database = {
         Returns: Json
       }
       employment_type_code: { Args: { _value: string }; Returns: string }
+      export_people: { Args: never; Returns: Json }
       finalize_abandoned_email_attachment_cleanup: {
         Args: { _storage_paths: string[] }
         Returns: number
@@ -2001,6 +2002,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      import_people: { Args: { _rows: Json }; Returns: Json }
       initialize_case_workflow: {
         Args: { _case_id: string }
         Returns: undefined
