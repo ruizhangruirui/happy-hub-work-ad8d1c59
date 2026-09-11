@@ -1,6 +1,7 @@
 @import "tailwindcss" source(none);
 @source "../src";
 @import "./workbench.css";
+@import "./workbench-refined.css";
 
 @custom-variant dark (&:is(.dark *));
 
