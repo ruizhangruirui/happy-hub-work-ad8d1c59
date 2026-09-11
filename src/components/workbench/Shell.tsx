@@ -89,13 +89,6 @@ export function Shell({
             })}
           </div>
         ))}
-        <div className="sidebarfoot">
-          <div className="support">
-            <b>{t("Support & Feedback")}</b>
-            <span>{t("Contact HR Ops")}</span>
-          </div>
-          <Icon name="mail" />
-        </div>
       </aside>
       <div>
         <header className="topbar">

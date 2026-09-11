@@ -183,7 +183,6 @@ button { cursor: pointer; }
 
 .navgroup button:hover em { transform: translateX(2px); color: var(--nav-ink); }
 
-.sidebarfoot { margin-top: auto; padding-top: 12px; }
 
 .rosterhead { display:flex; align-items:flex-end; justify-content:space-between; gap:20px; }
 .rosterstats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; margin:22px 0 14px; }
@@ -262,26 +261,6 @@ button { cursor: pointer; }
 
 @media (max-width: 900px) { .rosterstats { grid-template-columns:repeat(2,1fr); } .rosterfilters { flex-wrap:wrap; } .rostersearch { max-width:none; flex-basis:100%; } }
 @media (max-width: 620px) { .feedbackcard { padding:22px 18px; } .feedbackfacts { grid-template-columns:1fr; } .workflowactions { align-items:stretch; flex-direction:column; } }
-
-.support {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--r-md);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--nav-ink);
-  text-align: left;
-  font-size: 12.5px;
-  transition: background 0.15s;
-}
-
-.support:hover { background: rgba(255, 255, 255, 0.08); }
-.support .icon { width: 28px; height: 28px; border-radius: 8px; background: rgba(255,255,255,.08); }
-.support b { display: block; color: #fff; font-size: 12.5px; }
-.support small { font-size: 11px; color: #7c88a3; }
 
 /* ---------------------------------- topbar ---------------------------------- */
 
@@ -2240,16 +2219,6 @@ h1, h2, h3, .pagehead h1, .pagehead h2, .brand b, .statcard strong {
 }
 .navgroup button em { color: var(--ink-faint); }
 .navgroup button:hover em { color: var(--ink-sub); }
-.support {
-  border-color: var(--line);
-  background: var(--paper);
-  color: var(--ink-sub);
-  box-shadow: var(--shadow-sm);
-}
-.support:hover { background: var(--brand-soft); }
-.support b { color: var(--ink); }
-.support small { color: var(--ink-faint); }
-.support .icon { background: var(--brand-soft); color: var(--brand); }
 .brandmark { background: linear-gradient(135deg, #2f52c9, var(--brand)); }
 
 /* ---- topbar ---- */
