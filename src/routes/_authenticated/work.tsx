@@ -15,6 +15,7 @@ import { businessDate } from "@/lib/domain";
 import { exportRows } from "@/lib/export-service";
 import { opErrorMessage } from "@/lib/errors";
 import { Badge, Empty, Icon, Loading } from "@/components/workbench/ui";
+import { isArchivedOperationalTask, tasksForOperationalTeams } from "@/lib/work-task-view";
 
 export const Route = createFileRoute("/_authenticated/work")({
   head: () => ({
@@ -48,6 +49,7 @@ export function WorkPage() {
   const [taskAscending, setTaskAscending] = useState(true);
   const [taskView, setTaskView] = useState<"all" | "mandatory" | "overdue-mandatory">("all");
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
+  const [locallyCompletedTaskIds, setLocallyCompletedTaskIds] = useState<string[]>([]);
 
   const {
     data: overviewData,
@@ -67,22 +69,34 @@ export function WorkPage() {
     workbenchData && !("error" in workbenchData) ? (workbenchData as WorkbenchData) : null;
 
   const sortedTasks = useMemo(() => {
-    if (!overview) return [];
-    return overview.tasks
+    if (!overview || !workbench) return [];
+    return tasksForOperationalTeams(overview.tasks, workbench.currentUser.operationalTeams)
       .filter(
         (task) =>
-          taskView === "all" ||
-          (task.mandatory &&
-            ["Not Started", "Open", "In Progress", "Waiting", "Blocked"].includes(task.status) &&
-            (taskView === "mandatory" ||
-              Boolean(task.dueDate && task.dueDate < overview.businessDate))),
+          !isArchivedOperationalTask(task.status) &&
+          !locallyCompletedTaskIds.includes(task.id) &&
+          (taskView === "all" ||
+            (task.mandatory &&
+              ["Not Started", "Open", "In Progress", "Waiting", "Blocked"].includes(task.status) &&
+              (taskView === "mandatory" ||
+                Boolean(task.dueDate && task.dueDate < overview.businessDate)))),
       )
       .sort(
         (a, b) =>
           String(a[taskSort] ?? "9999").localeCompare(String(b[taskSort] ?? "9999")) *
           (taskAscending ? 1 : -1),
       );
-  }, [overview, taskAscending, taskSort, taskView]);
+  }, [locallyCompletedTaskIds, overview, taskAscending, taskSort, taskView, workbench]);
+
+  const archivedTasks = useMemo(() => {
+    if (!overview || !workbench) return [];
+    return tasksForOperationalTeams(overview.tasks, workbench.currentUser.operationalTeams)
+      .filter(
+        (task) =>
+          isArchivedOperationalTask(task.status) || locallyCompletedTaskIds.includes(task.id),
+      )
+      .sort((a, b) => String(b.completedAt ?? "").localeCompare(String(a.completedAt ?? "")));
+  }, [locallyCompletedTaskIds, overview, workbench]);
 
   if (isLoading) return <Loading />;
   if (isError)
@@ -154,10 +168,13 @@ export function WorkPage() {
   const completeTask = async (id: string) => {
     if (busyTaskId) return;
     setBusyTaskId(id);
+    setLocallyCompletedTaskIds((current) => [...new Set([...current, id])]);
     try {
       const result = await toggleTask({ data: { taskId: id, complete: true } });
-      if ("error" in result) toast.error(opErrorMessage(t, result.error));
-      else {
+      if ("error" in result) {
+        setLocallyCompletedTaskIds((current) => current.filter((taskId) => taskId !== id));
+        toast.error(opErrorMessage(t, result.error));
+      } else {
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ["operations-overview"] }),
           queryClient.invalidateQueries({ queryKey: ["workbench"] }),
@@ -165,6 +182,7 @@ export function WorkPage() {
         toast.success(t("Task completed"));
       }
     } catch {
+      setLocallyCompletedTaskIds((current) => current.filter((taskId) => taskId !== id));
       toast.error(t("Something went wrong. Please try again."));
     } finally {
       setBusyTaskId(null);
@@ -355,7 +373,12 @@ export function WorkPage() {
 
       <section id="operational-tasks" className="panel" style={{ marginTop: 22 }}>
         <div className="panelhead">
-          <b>{t("Operational Tasks")}</b>
+          <div>
+            <b>{t("My Operational Tasks")}</b>
+            <small className="panelhint">
+              {t("Only tasks for your functional team are shown.")}
+            </small>
+          </div>
           {taskView !== "all" ? (
             <button className="clear" onClick={() => setTaskView("all")}>
               <Icon name="x" /> {t("Clear Task View")}
@@ -450,8 +473,31 @@ export function WorkPage() {
             </table>
           </div>
         ) : (
-          <div className="inlineempty">{t("No tasks match the current filters.")}</div>
+          <div className="inlineempty">{t("No open tasks match the current filters.")}</div>
         )}
+        {archivedTasks.length ? (
+          <details className="taskarchive">
+            <summary>
+              {t("Completed & archived")} <Badge>{String(archivedTasks.length)}</Badge>
+            </summary>
+            <div className="taskarchivelist">
+              {archivedTasks.map((task) => (
+                <button key={task.id} type="button" onClick={() => openCase(task.caseId)}>
+                  <span>
+                    <b>{task.title}</b>
+                    <small>
+                      {task.person} · {t(functionalTeamLabel(task.ownerTeam))}
+                    </small>
+                  </span>
+                  <span>
+                    <Badge>{t(task.status)}</Badge>
+                    <small>{fmtDate(task.completedAt, lang)}</small>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </details>
+        ) : null}
       </section>
     </div>
   );

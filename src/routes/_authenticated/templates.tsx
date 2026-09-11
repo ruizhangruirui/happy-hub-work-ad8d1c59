@@ -2,7 +2,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { listTemplatesFn, saveTemplateFn } from "@/lib/workbench.functions";
 import type { TemplateDto } from "@/lib/types";
@@ -13,6 +13,7 @@ import { Badge, Empty, Icon, Loading, Modal } from "@/components/workbench/ui";
 import { supabase } from "@/integrations/supabase/client";
 import type { EmailVariableDto } from "@/lib/types";
 import { extractEmailVariableKeys } from "@/lib/email-compose";
+import { insertTemplateVariable } from "@/lib/template-variable-insert";
 
 export const Route = createFileRoute("/_authenticated/templates")({
   head: () => ({
@@ -590,6 +591,10 @@ function TemplateModal({
   const callSave = useServerFn(saveTemplateFn);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [variableTarget, setVariableTarget] = useState<"subject" | "body">("body");
+  const [variableSearch, setVariableSearch] = useState("");
+  const subjectRef = useRef<HTMLInputElement>(null);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
   const [form, setForm] = useState({
     name: template?.name ?? "",
     category: template?.category ?? categories[0] ?? "General",
@@ -607,6 +612,31 @@ function TemplateModal({
   });
   const set = (key: keyof typeof form) => (event: { target: { value: string } }) =>
     setForm((current) => ({ ...current, [key]: event.target.value }));
+
+  const availableVariables = [...globalVariables, ...form.manualVariables].filter(
+    (variable, index, all) => all.findIndex((item) => item.key === variable.key) === index,
+  );
+  const usedVariableKeys = new Set(extractEmailVariableKeys(form.subject, form.body));
+  const filteredVariables = availableVariables.filter((variable) =>
+    `${variable.displayName} ${variable.key} ${variable.description ?? ""}`
+      .toLowerCase()
+      .includes(variableSearch.trim().toLowerCase()),
+  );
+  const insertVariable = (key: string) => {
+    const element = variableTarget === "subject" ? subjectRef.current : bodyRef.current;
+    const currentValue = form[variableTarget];
+    const inserted = insertTemplateVariable(
+      currentValue,
+      key,
+      element?.selectionStart ?? currentValue.length,
+      element?.selectionEnd ?? currentValue.length,
+    );
+    setForm((current) => ({ ...current, [variableTarget]: inserted.value }));
+    requestAnimationFrame(() => {
+      element?.focus();
+      element?.setSelectionRange(inserted.caret, inserted.caret);
+    });
+  };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -714,208 +744,266 @@ function TemplateModal({
         </label>
         <label>
           {t("Subject")}
-          <input value={form.subject} onChange={set("subject")} required maxLength={300} />
+          <input
+            ref={subjectRef}
+            value={form.subject}
+            onChange={set("subject")}
+            onFocus={() => setVariableTarget("subject")}
+            required
+            maxLength={300}
+          />
         </label>
-        <div className="chips">
-          {globalVariables.map((definition) => (
-            <span className="actions" key={definition.key}>
+        <label>
+          {t("Body")}
+          <textarea
+            ref={bodyRef}
+            value={form.body}
+            onChange={set("body")}
+            onFocus={() => setVariableTarget("body")}
+            rows={12}
+            required
+            maxLength={20000}
+          />
+        </label>
+        <section className="templatevariablepicker">
+          <div className="templatevariablehead">
+            <div>
+              <b>{t("Personalize with variables")}</b>
+              <small>{t("Place the cursor in the subject or body, then click a variable.")}</small>
+            </div>
+            <div className="variabletarget" aria-label={t("Insert into")}>
               <button
                 type="button"
-                className="variable"
-                onClick={() => setForm((f) => ({ ...f, body: `${f.body}{{${definition.key}}}` }))}
+                className={variableTarget === "subject" ? "active" : ""}
+                aria-pressed={variableTarget === "subject"}
+                onClick={() => setVariableTarget("subject")}
               >
-                {t("Insert into Body")} {`{{${definition.key}}}`}
+                {t("Subject")}
               </button>
               <button
                 type="button"
-                className="variable"
-                onClick={() =>
-                  setForm((f) => ({ ...f, subject: `${f.subject}{{${definition.key}}}` }))
-                }
+                className={variableTarget === "body" ? "active" : ""}
+                aria-pressed={variableTarget === "body"}
+                onClick={() => setVariableTarget("body")}
               >
-                {t("Insert into Subject")} {`{{${definition.key}}}`}
-              </button>
-            </span>
-          ))}
-        </div>
-        <fieldset>
-          <legend>{t("Template-specific Manual Variables")}</legend>
-          {form.manualVariables.map((variable, index) => (
-            <div className="actions" key={variable.key}>
-              <b>{`{{${variable.key}}}`}</b>
-              <span>
-                {variable.displayName} · {variable.dataType} ·{" "}
-                {variable.required ? t("Required") : t("Optional")}
-              </span>
-              <button
-                type="button"
-                className="danger"
-                onClick={() =>
-                  setForm((current) => ({
-                    ...current,
-                    manualVariables: current.manualVariables.filter(
-                      (_, itemIndex) => itemIndex !== index,
-                    ),
-                  }))
-                }
-              >
-                {t("Remove")}
+                {t("Email body")}
               </button>
             </div>
-          ))}
-          <button
-            type="button"
-            className="secondary"
-            onClick={() =>
-              setForm((current) => ({
-                ...current,
-                manualVariables: [
-                  ...current.manualVariables,
-                  {
-                    key: `manual_${current.manualVariables.length + 1}`,
-                    displayName: "Manual Field",
-                    dataType: "text",
-                    sourceType: "manual",
-                    sourceField: null,
-                    required: false,
-                    defaultValue: null,
-                    description: null,
-                    choices: [],
-                  },
-                ],
-              }))
-            }
-          >
-            <Icon name="plus" /> {t("Add Manual Variable")}
-          </button>
-          {form.manualVariables.map((variable, index) => (
-            <div className="userform two compact" key={`${variable.key}-editor`}>
-              <label>
-                {t("Variable Key")}
-                <input
-                  value={variable.key}
-                  onChange={(event) =>
+          </div>
+          <input
+            className="variablesearch"
+            type="search"
+            value={variableSearch}
+            onChange={(event) => setVariableSearch(event.target.value)}
+            placeholder={t("Search variables")}
+          />
+          {filteredVariables.length ? (
+            <div className="variablegrid">
+              {filteredVariables.map((definition) => (
+                <button
+                  type="button"
+                  className={`variablepick${usedVariableKeys.has(definition.key) ? " used" : ""}`}
+                  key={definition.key}
+                  onClick={() => insertVariable(definition.key)}
+                  title={`{{${definition.key}}}`}
+                >
+                  <span>
+                    <b>{definition.displayName}</b>
+                    <code>{`{{${definition.key}}}`}</code>
+                  </span>
+                  <small>
+                    {usedVariableKeys.has(definition.key)
+                      ? t("Used")
+                      : t(
+                          definition.sourceType === "manual"
+                            ? "Fill before sending"
+                            : "Auto-filled",
+                        )}
+                  </small>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="variableempty">{t("No matching variables.")}</p>
+          )}
+        </section>
+        <details className="templateadvanced">
+          <summary>{t("Advanced custom fields")}</summary>
+          <div className="templateadvancedbody">
+            <p>{t("Only add one when the standard variables do not cover what you need.")}</p>
+            {form.manualVariables.map((variable, index) => (
+              <div className="actions" key={variable.key}>
+                <b>{`{{${variable.key}}}`}</b>
+                <span>
+                  {variable.displayName} · {variable.dataType} ·{" "}
+                  {variable.required ? t("Required") : t("Optional")}
+                </span>
+                <button
+                  type="button"
+                  className="danger"
+                  onClick={() =>
                     setForm((current) => ({
                       ...current,
-                      manualVariables: current.manualVariables.map((item, itemIndex) =>
-                        itemIndex === index ? { ...item, key: event.target.value } : item,
-                      ),
-                    }))
-                  }
-                />
-              </label>
-              <label>
-                {t("Display Name")}
-                <input
-                  value={variable.displayName}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      manualVariables: current.manualVariables.map((item, itemIndex) =>
-                        itemIndex === index ? { ...item, displayName: event.target.value } : item,
-                      ),
-                    }))
-                  }
-                />
-              </label>
-              <label>
-                {t("Data Type")}
-                <select
-                  value={variable.dataType}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      manualVariables: current.manualVariables.map((item, itemIndex) =>
-                        itemIndex === index ? { ...item, dataType: event.target.value } : item,
+                      manualVariables: current.manualVariables.filter(
+                        (_, itemIndex) => itemIndex !== index,
                       ),
                     }))
                   }
                 >
-                  {["text", "date", "email", "number", "boolean", "dropdown", "choice"].map(
-                    (type) => (
-                      <option key={type}>{type}</option>
-                    ),
-                  )}
-                </select>
-              </label>
-              <label>
-                {t("Default Value")}
-                <input
-                  value={variable.defaultValue ?? ""}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      manualVariables: current.manualVariables.map((item, itemIndex) =>
-                        itemIndex === index
-                          ? { ...item, defaultValue: event.target.value || null }
-                          : item,
-                      ),
-                    }))
-                  }
-                />
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={variable.required}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      manualVariables: current.manualVariables.map((item, itemIndex) =>
-                        itemIndex === index ? { ...item, required: event.target.checked } : item,
-                      ),
-                    }))
-                  }
-                />{" "}
-                {t("Required")}
-              </label>
-              <label>
-                {t("Description")}
-                <input
-                  value={variable.description ?? ""}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      manualVariables: current.manualVariables.map((item, itemIndex) =>
-                        itemIndex === index
-                          ? { ...item, description: event.target.value || null }
-                          : item,
-                      ),
-                    }))
-                  }
-                />
-              </label>
-              {["dropdown", "choice"].includes(variable.dataType) ? (
+                  {t("Remove")}
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              className="secondary"
+              onClick={() =>
+                setForm((current) => ({
+                  ...current,
+                  manualVariables: [
+                    ...current.manualVariables,
+                    {
+                      key: `custom_field_${current.manualVariables.length + 1}`,
+                      displayName: t("Custom field"),
+                      dataType: "text",
+                      sourceType: "manual",
+                      sourceField: null,
+                      required: false,
+                      defaultValue: null,
+                      description: null,
+                      choices: [],
+                    },
+                  ],
+                }))
+              }
+            >
+              <Icon name="plus" /> {t("Add custom field")}
+            </button>
+            {form.manualVariables.map((variable, index) => (
+              <div className="userform two compact" key={`${variable.key}-editor`}>
                 <label>
-                  {t("Choices")}
+                  {t("Variable Key")}
                   <input
-                    value={(variable.choices ?? []).join(", ")}
+                    value={variable.key}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        manualVariables: current.manualVariables.map((item, itemIndex) =>
+                          itemIndex === index ? { ...item, key: event.target.value } : item,
+                        ),
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  {t("Display Name")}
+                  <input
+                    value={variable.displayName}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        manualVariables: current.manualVariables.map((item, itemIndex) =>
+                          itemIndex === index ? { ...item, displayName: event.target.value } : item,
+                        ),
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  {t("Data Type")}
+                  <select
+                    value={variable.dataType}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        manualVariables: current.manualVariables.map((item, itemIndex) =>
+                          itemIndex === index ? { ...item, dataType: event.target.value } : item,
+                        ),
+                      }))
+                    }
+                  >
+                    {["text", "date", "email", "number", "boolean", "dropdown", "choice"].map(
+                      (type) => (
+                        <option key={type}>{type}</option>
+                      ),
+                    )}
+                  </select>
+                </label>
+                <label>
+                  {t("Default Value")}
+                  <input
+                    value={variable.defaultValue ?? ""}
                     onChange={(event) =>
                       setForm((current) => ({
                         ...current,
                         manualVariables: current.manualVariables.map((item, itemIndex) =>
                           itemIndex === index
-                            ? {
-                                ...item,
-                                choices: event.target.value
-                                  .split(",")
-                                  .map((choice) => choice.trim())
-                                  .filter(Boolean),
-                              }
+                            ? { ...item, defaultValue: event.target.value || null }
                             : item,
                         ),
                       }))
                     }
                   />
                 </label>
-              ) : null}
-            </div>
-          ))}
-        </fieldset>
-        <label>
-          {t("Body")}
-          <textarea value={form.body} onChange={set("body")} rows={12} required maxLength={20000} />
-        </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={variable.required}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        manualVariables: current.manualVariables.map((item, itemIndex) =>
+                          itemIndex === index ? { ...item, required: event.target.checked } : item,
+                        ),
+                      }))
+                    }
+                  />{" "}
+                  {t("Required")}
+                </label>
+                <label>
+                  {t("Description")}
+                  <input
+                    value={variable.description ?? ""}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        manualVariables: current.manualVariables.map((item, itemIndex) =>
+                          itemIndex === index
+                            ? { ...item, description: event.target.value || null }
+                            : item,
+                        ),
+                      }))
+                    }
+                  />
+                </label>
+                {["dropdown", "choice"].includes(variable.dataType) ? (
+                  <label>
+                    {t("Choices")}
+                    <input
+                      value={(variable.choices ?? []).join(", ")}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          manualVariables: current.manualVariables.map((item, itemIndex) =>
+                            itemIndex === index
+                              ? {
+                                  ...item,
+                                  choices: event.target.value
+                                    .split(",")
+                                    .map((choice) => choice.trim())
+                                    .filter(Boolean),
+                                }
+                              : item,
+                          ),
+                        }))
+                      }
+                    />
+                  </label>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </details>
         {template?.id ? (
           <TemplateAttachments template={template} />
         ) : (

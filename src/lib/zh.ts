@@ -168,3 +168,22 @@ Object.assign(zh, {
   "People analytics is available to HR operations only.":"人员分析仅对 HR 运营人员开放。",
   "Loading analytics…":"正在加载分析数据……"
 });
+
+Object.assign(zh, {
+  "My Operational Tasks":"我的运营任务",
+  "Only tasks for your functional team are shown.":"这里只显示您所属职能团队的任务。",
+  "No open tasks match the current filters.":"当前筛选条件下没有待处理任务。",
+  "Completed & archived":"已完成与已归档",
+  "Personalize with variables":"使用变量自动填充",
+  "Place the cursor in the subject or body, then click a variable.":"将光标放在主题或正文中，再点击一个变量即可插入。",
+  "Insert into":"插入到",
+  "Email body":"邮件正文",
+  "Search variables":"搜索变量",
+  "Used":"已使用",
+  "Fill before sending":"发送前填写",
+  "No matching variables.":"没有匹配的变量。",
+  "Advanced custom fields":"高级：自定义字段",
+  "Only add one when the standard variables do not cover what you need.":"仅当标准变量无法满足需求时才添加自定义字段。",
+  "Add custom field":"添加自定义字段",
+  "Custom field":"自定义字段"
+});
