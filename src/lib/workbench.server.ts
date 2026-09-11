@@ -21,6 +21,7 @@ import type {
   EmailVariableDto,
   PeopleRowDto,
   PeoplePageDto,
+  PeopleExportRowDto,
   PersonDetailDto,
   ChecklistTemplateDto,
   ChecklistTemplateItemDto,
@@ -1056,6 +1057,27 @@ export async function getPeople(
   });
   if (error) throw new Error(error.message);
   return data as PeoplePageDto;
+}
+
+export async function importPeople(supabase: Db, userId: string, rows: unknown[]) {
+  if (!(await loadIdentity(supabase, userId))) return { error: "access_denied" as const };
+  const { data, error } = await supabase.rpc("import_people", { _rows: rows });
+  if (error) {
+    if (error.code === "42501") return { error: "forbidden" as const };
+    throw new Error(error.message);
+  }
+  return data as {
+    created: number;
+    updated: number;
+    errors: Array<{ row: number; message: string }>;
+  };
+}
+
+export async function exportPeople(supabase: Db, userId: string) {
+  if (!(await loadIdentity(supabase, userId))) return { error: "access_denied" as const };
+  const { data, error } = await supabase.rpc("export_people");
+  if (error) throw new Error(error.message);
+  return data as PeopleExportRowDto[];
 }
 
 export async function getPersonDetail(

@@ -399,6 +399,26 @@ export interface PeopleRowDto {
   endDate: string | null;
   supervisorName: string | null;
 }
+export interface PeopleExportRowDto {
+  givenName: string | null;
+  familyName: string | null;
+  preferredName: string | null;
+  personalEmail: string | null;
+  companyEmail: string | null;
+  employeeId: string | null;
+  phone: string | null;
+  employmentType: string;
+  team: string | null;
+  role: string | null;
+  location: string | null;
+  supervisorName: string | null;
+  supervisorEmail: string | null;
+  workload: number | null;
+  contractType: string | null;
+  status: string;
+  startDate: string | null;
+  endDate: string | null;
+}
 export interface PersonCandidateDto {
   personId: string | null;
   displayName: string;

@@ -221,6 +221,45 @@ export const getPeopleFn = createServerFn({ method: "GET" })
       .parse(data),
   )
   .handler(({ data, context }) => wb.getPeople(context.supabase as wb.Db, context.userId, data));
+export const importPeopleFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data) =>
+    z
+      .object({
+        rows: z
+          .array(
+            z.object({
+              rowNumber: z.number().int().positive(),
+              givenName: z.string().min(1).max(60),
+              familyName: z.string().min(1).max(60),
+              preferredName: z.string().max(60).optional(),
+              personalEmail: z.string().email().max(320).optional(),
+              companyEmail: z.string().email().max(320).optional(),
+              employeeId: z.string().max(80).optional(),
+              phone: z.string().max(80).optional(),
+              employmentType: z.enum(["Employee", "Intern", "Leased Labour"]),
+              team: z.string().max(160).optional(),
+              role: z.string().max(120).optional(),
+              location: z.string().max(120).optional(),
+              supervisorName: z.string().max(120).optional(),
+              supervisorEmail: z.string().email().max(320).optional(),
+              workload: z.number().int().min(0).max(100).optional(),
+              contractType: z.string().max(120).optional(),
+              startDate: z.string().date(),
+              endDate: z.string().date().optional(),
+            }),
+          )
+          .min(1)
+          .max(500),
+      })
+      .parse(data),
+  )
+  .handler(({ data, context }) =>
+    wb.importPeople(context.supabase as wb.Db, context.userId, data.rows),
+  );
+export const exportPeopleFn = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(({ context }) => wb.exportPeople(context.supabase as wb.Db, context.userId));
 export const getPersonDetailFn = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .validator((d) => z.object({ personId: z.string().uuid() }).parse(d))

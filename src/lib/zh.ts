@@ -9,6 +9,8 @@ export const zh: Record<string,string> = {
 
 // Extra keys added for the Lovable Cloud rebuild (auth, access denied, sharing).
 Object.assign(zh, {
+  "Import People":"导入人员","Importing…":"正在导入……","Import Template":"导入模板","People Import Result":"人员导入结果",
+  "People import completed":"人员导入完成","Created":"已创建","Errors":"错误","Row":"行",
   "Internal Operations":"内部运营","Support & Feedback":"支持与反馈","Contact HR Ops":"联系 HR 运营",
   "Sign Out":"退出登录","My Account":"我的账户","Sign In":"登录","Sign Up":"注册",
   "Email":"邮箱","Password":"密码","Full Name":"姓名","Don't have an account?":"还没有账号？","Have an account?":"已有账号？",
