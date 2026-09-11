@@ -83,7 +83,7 @@ export function Shell({
                   className={active ? "active" : ""}
                   onClick={() => navigate({ to: item.to })}
                 >
-                  <Icon name={item.icon} /> <span>{t(item.label)}</span> <em>›</em>
+                  <Icon name={item.icon} /> <span>{t(item.label)}</span>
                 </button>
               );
             })}

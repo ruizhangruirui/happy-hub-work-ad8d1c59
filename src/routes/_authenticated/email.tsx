@@ -394,7 +394,6 @@ export function EmailPage() {
     <div className="emailpage">
       <div className="pagehead">
         <div>
-          <p className="eyebrow">{t("COMMUNICATION")}</p>
           <h1>{t("Email Center")}</h1>
           <p>{t("Team Workbench prepares the draft. You review and send it in Outlook.")}</p>
         </div>
@@ -402,7 +401,7 @@ export function EmailPage() {
       <div className="emailgrid">
         <section className="panel information emailcompose">
           <div className="columnhead">
-            <b>1. {t("Select")}</b>
+            <b>{t("Select")}</b>
           </div>
           <label className="sharefield">
             <span>{t("Select Case")}</span>
@@ -450,7 +449,7 @@ export function EmailPage() {
             />
           </label>
           <div className="columnhead">
-            <b>2. {t("Missing / Manual Information")}</b>
+            <b>{t("Missing / Manual Information")}</b>
           </div>
           {manualDefinitions.length ? (
             manualDefinitions.map((item) => (
@@ -575,14 +574,14 @@ export function EmailPage() {
         </section>
         <section className="panel preview emailpreview">
           <div className="columnhead emailreviewhead">
-            <b>3. {t("Review")}</b>
+            <b>{t("Review")}</b>
             <div className="actions emailactions">
               <button
                 className="primary"
                 disabled={!ready || Boolean(actionBusy)}
                 onClick={openOutlook}
               >
-                <Icon name="send" /> 4. {t("Open in Outlook")}
+                <Icon name="send" /> {t("Open in Outlook")}
               </button>
               <span className={`badge ${outlookMode === "desktop_bridge" ? "b-active" : ""}`}>
                 {t("Outlook Integration")}:{" "}

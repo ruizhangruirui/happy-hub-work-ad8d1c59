@@ -152,10 +152,8 @@ function CaseDetailPage() {
             {c.role ?? t(c.employmentType)} · {c.team} · {t(c.caseType)}
           </p>
         </div>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+        <div className="caseheroactions">
           <Badge>{c.status}</Badge>
-          <Badge>{c.priority}</Badge>
-          <Badge>{c.accessLevel}</Badge>
           {detail.tasks.length ? (
             <span className="caseprogress">
               <b>{mandatoryProgress.percent}%</b>
@@ -185,7 +183,7 @@ function CaseDetailPage() {
             </button>
           ) : null}
           {capabilities.canShareCase ? (
-            <button className="primary" onClick={() => setShareOpen(true)}>
+            <button className="secondary" onClick={() => setShareOpen(true)}>
               <Icon name="link" /> {t("Share")}
             </button>
           ) : null}

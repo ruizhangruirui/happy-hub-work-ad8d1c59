@@ -181,9 +181,6 @@ export function WorkPage() {
     <div>
       <div className="pagehead">
         <div>
-          <p className="eyebrow">
-            {t(overview.reportingMode === "hr" ? "OPERATIONS OVERVIEW" : "OPERATIONAL WORK")}
-          </p>
           <h1>
             {t(
               overview.reportingMode === "hr"
@@ -261,17 +258,20 @@ export function WorkPage() {
               {t("Only tasks for your functional team are shown.")}
             </small>
           </div>
-          <div className="actions">
-            <button className="secondary" onClick={() => void exportTasks("current-view", "csv")}>
-              {t("Export Current View")} CSV
-            </button>
-            <button className="secondary" onClick={() => void exportTasks("current-view", "xlsx")}>
-              {t("Export Current View")} XLSX
-            </button>
-            <button className="secondary" onClick={() => void exportTasks("all", "xlsx")}>
-              {t("Export All")} XLSX
-            </button>
-          </div>
+          <details className="toolmenu">
+            <summary>{t("Export")}</summary>
+            <div>
+              <button onClick={() => void exportTasks("current-view", "csv")}>
+                {t("Export Current View")} · CSV
+              </button>
+              <button onClick={() => void exportTasks("current-view", "xlsx")}>
+                {t("Export Current View")} · XLSX
+              </button>
+              <button onClick={() => void exportTasks("all", "xlsx")}>
+                {t("Export All")} · XLSX
+              </button>
+            </div>
+          </details>
         </div>
         {sortedTasks.length ? (
           <div className="rosterpanel">
