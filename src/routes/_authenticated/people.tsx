@@ -158,41 +158,44 @@ function PeoplePage() {
           <h1>{t("People")}</h1>
           <p>{t("One person, one profile, complete employment history")}</p>
         </div>
-        <div className="actions">
-          {canImport ? (
-            <>
-              <input
-                ref={fileRef}
-                hidden
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) void upload(file);
-                }}
-              />
-              <button
-                className="secondary"
-                disabled={importing}
-                onClick={() => fileRef.current?.click()}
-              >
-                <Icon name="upload" /> {importing ? t("Importing…") : t("Import People")}
-              </button>
-              <button className="secondary" onClick={() => void downloadTemplate()}>
-                {t("Import Template")}
-              </button>
-            </>
-          ) : null}
-          <button className="secondary" onClick={() => void exportPeople(false, "csv")}>
-            <Icon name="doc" /> {t("Export Current View")} CSV
-          </button>
-          <button className="secondary" onClick={() => void exportPeople(false, "xlsx")}>
-            {t("Export Current View")} XLSX
-          </button>
-          <button className="secondary" onClick={() => void exportPeople(true, "xlsx")}>
-            {t("Export All")} XLSX
-          </button>
-        </div>
+        <details className="toolmenu">
+          <summary>{t("Tools")}</summary>
+          <div>
+            {canImport ? (
+              <>
+                <input
+                  ref={fileRef}
+                  hidden
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void upload(file);
+                  }}
+                />
+                <button
+                  className="secondary"
+                  disabled={importing}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  <Icon name="upload" /> {importing ? t("Importing…") : t("Import People")}
+                </button>
+                <button className="secondary" onClick={() => void downloadTemplate()}>
+                  {t("Import Template")}
+                </button>
+              </>
+            ) : null}
+            <button className="secondary" onClick={() => void exportPeople(false, "csv")}>
+              <Icon name="doc" /> {t("Export Current View")} CSV
+            </button>
+            <button className="secondary" onClick={() => void exportPeople(false, "xlsx")}>
+              {t("Export Current View")} XLSX
+            </button>
+            <button className="secondary" onClick={() => void exportPeople(true, "xlsx")}>
+              {t("Export All")} XLSX
+            </button>
+          </div>
+        </details>
       </div>
       <div className="filterbar">
         <div className="searchbox">

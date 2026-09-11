@@ -1985,6 +1985,39 @@ button { cursor: pointer; }
   .emailbody { min-height: 240px; padding: 18px 16px; }
   .emailpreview > p { padding: 14px 16px; }
 }
+
+/* Calm workspace density: keep secondary controls available without competing with the work. */
+.content { max-width: 1480px; margin-inline: auto; }
+.pagehead { margin-bottom: 22px; }
+.pagehead > div:first-child > p:not(.eyebrow) { max-width: 660px; color: var(--ink-faint); }
+.panel, .casetable, .rosterpanel, .filterbar {
+  box-shadow: none;
+  border-color: #e6e9f0;
+}
+.panelhead { padding-block: 15px; }
+.compactfilters { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+.compactfilters .searchbox { flex:1; max-width:560px; }
+.advancedfilters { margin-top:-4px; margin-bottom:16px; background:#fafbfc; }
+.toolmenu { position:relative; margin-left:auto; }
+.toolmenu > summary {
+  list-style:none; cursor:pointer; border:1px solid var(--line); border-radius:9px;
+  padding:9px 13px; background:var(--paper); color:var(--ink-sub); font-size:12px; font-weight:700;
+}
+.toolmenu > summary::-webkit-details-marker { display:none; }
+.toolmenu > summary::after { content:' ▾'; color:var(--ink-faint); }
+.toolmenu[open] > summary { border-color:var(--brand); color:var(--brand); }
+.toolmenu > div {
+  position:absolute; z-index:20; top:calc(100% + 7px); right:0; min-width:230px;
+  display:flex; flex-direction:column; gap:3px; padding:7px; border:1px solid var(--line);
+  border-radius:11px; background:var(--paper); box-shadow:var(--shadow-md);
+}
+.toolmenu > div button { border:0; border-radius:7px; padding:9px 10px; background:transparent; color:var(--ink-sub); text-align:left; font-size:12px; }
+.toolmenu > div button:hover { background:var(--brand-soft); color:var(--brand); }
+@media (max-width:760px) {
+  .compactfilters { align-items:stretch; flex-direction:column; }
+  .compactfilters .searchbox,.compactfilters > button { width:100%; max-width:none; }
+  .toolmenu { margin-left:0; }
+}
 .casetable .row.lifecycle-success{background:color-mix(in srgb,#e8f7ef 55%,white)}
 .casetable .row.lifecycle-success {
   background: color-mix(in srgb, #e8f7ef 55%, white);

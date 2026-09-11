@@ -38,6 +38,7 @@ export function CaseList({ caseType }: { caseType: "onboarding" | "offboarding" 
   const [leavingType, setLeavingType] = useState("");
   const [sort, setSort] = useState<"date" | "name" | "status" | "priority">("date");
   const [modalOpen, setModalOpen] = useState(openNew === "1");
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const wb: WorkbenchData | null = data && !("error" in data) ? data : null;
 
@@ -124,20 +125,21 @@ export function CaseList({ caseType }: { caseType: "onboarding" | "offboarding" 
             {caseType === "onboarding" ? t("New Onboarding") : t("New Offboarding")}
           </button>
         ) : null}
-        <div className="actions">
-          <button className="secondary" onClick={() => exportCases("view", "csv")}>
-            {t("Export Current View")} CSV
-          </button>
-          <button className="secondary" onClick={() => exportCases("view", "xlsx")}>
-            {t("Export Current View")} XLSX
-          </button>
-          <button className="secondary" onClick={() => exportCases("all", "xlsx")}>
-            {t("Export All")} XLSX
-          </button>
-        </div>
+        <details className="toolmenu">
+          <summary>{t("Tools")}</summary>
+          <div>
+            <button onClick={() => exportCases("view", "csv")}>
+              {t("Export Current View")} CSV
+            </button>
+            <button onClick={() => exportCases("view", "xlsx")}>
+              {t("Export Current View")} XLSX
+            </button>
+            <button onClick={() => exportCases("all", "xlsx")}>{t("Export All")} XLSX</button>
+          </div>
+        </details>
       </div>
 
-      <div className="filterbar">
+      <div className="compactfilters">
         <div className="searchbox">
           <Icon name="search" />
           <input
@@ -146,90 +148,108 @@ export function CaseList({ caseType }: { caseType: "onboarding" | "offboarding" 
             placeholder={t("Search people, tasks, emails")}
           />
         </div>
-        <select className="filter" value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">{t("All Status")}</option>
-          {statuses.map((s) => (
-            <option key={s} value={s}>
-              {t(s)}
-            </option>
-          ))}
-        </select>
-        <select className="filter" value={empType} onChange={(e) => setEmpType(e.target.value)}>
-          <option value="">{t("All Types")}</option>
-          {EMPLOYMENT_TYPES.map((x) => (
-            <option key={x} value={x}>
-              {t(x)}
-            </option>
-          ))}
-        </select>
-        <select className="filter" value={team} onChange={(e) => setTeam(e.target.value)}>
-          <option value="">{t("All Teams")}</option>
-          {teams.map((x) => (
-            <option key={x} value={x}>
-              {x}
-            </option>
-          ))}
-        </select>
-        {caseType === "offboarding" ? (
-          <select
-            className="filter"
-            value={leavingType}
-            onChange={(e) => setLeavingType(e.target.value)}
-          >
-            <option value="">{t("All Leaving Types")}</option>
-            {[
-              ...new Set(
-                wb.cases
-                  .filter((c) => c.caseType === "Offboarding")
-                  .map((c) => c.leavingType)
-                  .filter(Boolean) as string[],
-              ),
-            ].map((x) => (
-              <option key={x}>{x}</option>
+        <button
+          className="secondary"
+          onClick={() => setFiltersOpen((open) => !open)}
+          aria-expanded={filtersOpen}
+        >
+          <Icon name="filter" /> {t("Filters")}
+          {[status, team, empType, leavingType, dateFrom, dateTo].filter(Boolean).length ? (
+            <Badge>
+              {String(
+                [status, team, empType, leavingType, dateFrom, dateTo].filter(Boolean).length,
+              )}
+            </Badge>
+          ) : null}
+        </button>
+      </div>
+      {filtersOpen ? (
+        <div className="filterbar advancedfilters">
+          <select className="filter" value={status} onChange={(e) => setStatus(e.target.value)}>
+            <option value="">{t("All Status")}</option>
+            {statuses.map((s) => (
+              <option key={s} value={s}>
+                {t(s)}
+              </option>
             ))}
           </select>
-        ) : null}
-        <input
-          className="filter"
-          type="date"
-          value={dateFrom}
-          onChange={(e) => setDateFrom(e.target.value)}
-          aria-label={t("Date from")}
-        />
-        <input
-          className="filter"
-          type="date"
-          value={dateTo}
-          onChange={(e) => setDateTo(e.target.value)}
-          aria-label={t("Date to")}
-        />
-        <select
-          className="filter"
-          value={sort}
-          onChange={(e) => setSort(e.target.value as typeof sort)}
-        >
-          <option value="date">{t("Sort by date")}</option>
-          <option value="name">{t("Sort by name")}</option>
-          <option value="status">{t("Sort by status")}</option>
-          <option value="priority">{t("Sort by priority")}</option>
-        </select>
-        {search || status || team || empType || leavingType || dateFrom || dateTo ? (
-          <button
-            className="clear"
-            onClick={() => {
-              setSearch("");
-              setStatus("");
-              setTeam("");
-              setEmpType("");
-              setLeavingType("");
-              setDateFrom("");
-              setDateTo("");
-            }}
+          <select className="filter" value={empType} onChange={(e) => setEmpType(e.target.value)}>
+            <option value="">{t("All Types")}</option>
+            {EMPLOYMENT_TYPES.map((x) => (
+              <option key={x} value={x}>
+                {t(x)}
+              </option>
+            ))}
+          </select>
+          <select className="filter" value={team} onChange={(e) => setTeam(e.target.value)}>
+            <option value="">{t("All Teams")}</option>
+            {teams.map((x) => (
+              <option key={x} value={x}>
+                {x}
+              </option>
+            ))}
+          </select>
+          {caseType === "offboarding" ? (
+            <select
+              className="filter"
+              value={leavingType}
+              onChange={(e) => setLeavingType(e.target.value)}
+            >
+              <option value="">{t("All Leaving Types")}</option>
+              {[
+                ...new Set(
+                  wb.cases
+                    .filter((c) => c.caseType === "Offboarding")
+                    .map((c) => c.leavingType)
+                    .filter(Boolean) as string[],
+                ),
+              ].map((x) => (
+                <option key={x}>{x}</option>
+              ))}
+            </select>
+          ) : null}
+          <input
+            className="filter"
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            aria-label={t("Date from")}
+          />
+          <input
+            className="filter"
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            aria-label={t("Date to")}
+          />
+          <select
+            className="filter"
+            value={sort}
+            onChange={(e) => setSort(e.target.value as typeof sort)}
           >
-            <Icon name="x" /> {t("Clear")}
-          </button>
-        ) : null}
-      </div>
+            <option value="date">{t("Sort by date")}</option>
+            <option value="name">{t("Sort by name")}</option>
+            <option value="status">{t("Sort by status")}</option>
+            <option value="priority">{t("Sort by priority")}</option>
+          </select>
+          {search || status || team || empType || leavingType || dateFrom || dateTo ? (
+            <button
+              className="clear"
+              onClick={() => {
+                setSearch("");
+                setStatus("");
+                setTeam("");
+                setEmpType("");
+                setLeavingType("");
+                setDateFrom("");
+                setDateTo("");
+              }}
+            >
+              <Icon name="x" /> {t("Clear")}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       {filtered.length === 0 ? (
         <Empty
