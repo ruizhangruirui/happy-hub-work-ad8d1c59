@@ -1,10 +1,9 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
-import { supabase } from "@/integrations/supabase/client";
 import {
   assignTaskFn,
   addTaskCommentFn,
@@ -20,7 +19,6 @@ import {
   updateOffboardingDatesFn,
   setCaseConfirmationFn,
   createExternalRequestFn,
-  deleteCaseFileFn,
 } from "@/lib/workbench.functions";
 import type { CaseDetailDto, WorkbenchData } from "@/lib/types";
 import { useLang } from "@/lib/i18n";
@@ -220,14 +218,6 @@ function CaseDetailPage() {
         />
       ) : null}
       {tab === "Communication" ? <CommunicationTab detail={detail} caseId={caseId} /> : null}
-      {tab === "Files" ? (
-        <FilesTab
-          detail={detail}
-          canManageFiles={capabilities.canManageFiles}
-          refresh={refresh}
-          caseId={caseId}
-        />
-      ) : null}
       {tab === "History" ? <HistoryTab detail={detail} /> : null}
 
       {shareOpen && wb ? (
@@ -1052,159 +1042,6 @@ function CommunicationTab({ detail, caseId }: { detail: CaseDetailDto; caseId: s
                     {t("Attachments")}:{" "}
                     {communication.attachments.map((attachment) => attachment.filename).join(", ")}
                   </span>
-                ) : null}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function FilesTab({
-  detail,
-  canManageFiles,
-  refresh,
-  caseId,
-}: {
-  detail: CaseDetailDto;
-  canManageFiles: boolean;
-  refresh: () => void;
-  caseId: string;
-}) {
-  const { t, lang } = useLang();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const deleteFile = useServerFn(deleteCaseFileFn);
-  const [busy, setBusy] = useState(false);
-
-  const upload = async (file: File) => {
-    const allowedTypes = [
-      "application/pdf",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "image/png",
-      "image/jpeg",
-    ];
-    if (file.size > 25 * 1024 * 1024 || !allowedTypes.includes(file.type)) {
-      toast.error(t("Use PDF, DOCX, XLSX, PNG or JPEG files up to 25 MB."));
-      return;
-    }
-    setBusy(true);
-    const fileId = crypto.randomUUID();
-    try {
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const path = `${caseId}/${fileId}-${safeName}`;
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("no session");
-      const { error: rowErr } = await supabase.from("case_files").insert({
-        id: fileId,
-        case_id: caseId,
-        storage_path: path,
-        filename: file.name,
-        size: file.size,
-        content_type: file.type || null,
-        uploaded_by: user.id,
-      });
-      if (rowErr) throw rowErr;
-      const { error: upErr } = await supabase.storage.from("case-files").upload(path, file);
-      if (upErr) {
-        await deleteFile({ data: { fileId } });
-        throw upErr;
-      }
-      toast.success(t("Saved"));
-      refresh();
-    } catch {
-      toast.error(t("Upload failed. Please try again."));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const download = async (fileId: string, filename: string) => {
-    const f = detail.files.find((x) => x.id === fileId);
-    if (!f) return;
-    void filename;
-    const { data: row } = await supabase
-      .from("case_files")
-      .select("storage_path")
-      .eq("id", fileId)
-      .maybeSingle();
-    if (!row) return;
-    const { data: signed } = await supabase.storage
-      .from("case-files")
-      .createSignedUrl(row.storage_path, 60);
-    if (signed?.signedUrl) window.open(signed.signedUrl, "_blank", "noopener");
-  };
-
-  const remove = async (fileId: string) => {
-    if (!window.confirm(t("Remove this file? This action cannot be undone."))) return;
-    setBusy(true);
-    try {
-      const result = await deleteFile({ data: { fileId } });
-      if ("error" in result) toast.error(opErrorMessage(t, result.error));
-      else {
-        toast.success(t("File removed"));
-        refresh();
-      }
-    } catch {
-      toast.error(t("Something went wrong. Please try again."));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="panel">
-      <div className="panelhead">
-        <b>{t("Files")}</b>
-        {canManageFiles ? (
-          <>
-            <input
-              ref={inputRef}
-              type="file"
-              accept=".pdf,.docx,.xlsx,.png,.jpg,.jpeg"
-              style={{ display: "none" }}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void upload(f);
-                e.target.value = "";
-              }}
-            />
-            <button className="primary" disabled={busy} onClick={() => inputRef.current?.click()}>
-              <Icon name="upload" /> {busy ? t("Uploading…") : t("Upload File")}
-            </button>
-          </>
-        ) : null}
-      </div>
-      {detail.files.length === 0 ? (
-        <div className="inlineempty">
-          <Icon name="folder" /> {t("No files yet. Upload contracts, forms or certificates here.")}
-        </div>
-      ) : (
-        <div className="communications">
-          {detail.files.map((f) => (
-            <div className="comm" key={f.id}>
-              <span className="mailicon">
-                <Icon name="doc" />
-              </span>
-              <div>
-                <b>{f.filename}</b>
-                <span>
-                  {f.size ? `${Math.round(f.size / 1024)} KB · ` : ""}
-                  {f.uploadedByName} · {fmtDateTime(f.at, lang)}
-                </span>
-              </div>
-              <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-                <button className="textbutton" onClick={() => download(f.id, f.filename)}>
-                  {t("Download")}
-                </button>
-                {canManageFiles ? (
-                  <button className="textbutton" disabled={busy} onClick={() => remove(f.id)}>
-                    {t("Delete")}
-                  </button>
                 ) : null}
               </div>
             </div>
