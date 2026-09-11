@@ -107,7 +107,7 @@ function ActiveRosterPage() {
         <div>
           <span className="eyebrow">{t("PEOPLE OPERATIONS")}</span>
           <h1>{t("Active People")}</h1>
-          <p>{t("People currently working, including pending leavers until Confirm Left")}</p>
+          <p>{t("People currently working, including leavers through their Contract End Date")}</p>
         </div>
         <div className="actions">
           <button className="secondary" onClick={() => exportRoster("view", "csv")}>

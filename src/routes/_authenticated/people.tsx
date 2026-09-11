@@ -67,7 +67,7 @@ function PeoplePage() {
           }}
         >
           <option value="">{t("All Status")}</option>
-          {["planned", "active", "ending", "ended"].map((item) => (
+          {["active", "ending"].map((item) => (
             <option key={item}>{item}</option>
           ))}
         </select>

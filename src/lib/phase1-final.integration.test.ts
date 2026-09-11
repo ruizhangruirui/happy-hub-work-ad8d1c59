@@ -472,7 +472,7 @@ describe("Phase 1 final closure — real PostgreSQL integration", () => {
   it("keeps Former lifecycle ended when offboarding workflow is reopened", async () => {
     for (const [suffix, originalEnd] of [
       ["NULL", null],
-      ["FIXED", "2026-08-31"],
+      ["FIXED", "2099-08-31"],
     ] as const) {
       const created = await createOnboarding(ADMIN, TEAM_A, `REOPEN-${suffix}`);
       const ids = created.rows[0]!.result;
@@ -494,7 +494,7 @@ describe("Phase 1 final closure — real PostgreSQL integration", () => {
       expect(visibleEmployment.rows).toHaveLength(1);
       const offboarding = await asUser<{ result: { caseId: string } }>(
         ADMIN,
-        "select public.create_offboarding_case_v2($1,$2,'2026-08-15','Resignation',null,'Medium',null) result",
+        "select public.create_offboarding_case_v2($1,$2,'2099-08-15','Resignation',null,'Medium',null) result",
         [ids.personId, ids.employmentId],
       );
       const offboardingId = offboarding.rows[0]!.result.caseId;
@@ -546,7 +546,7 @@ describe("Phase 1 final closure — real PostgreSQL integration", () => {
     expect(count.rows[0]!.count).toBe(1);
   });
 
-  it("implements joined/left lifecycle immediately while retaining both historical cases", async () => {
+  it("keeps confirmed leavers visible through Contract End Date while retaining history", async () => {
     const created = await createOnboarding(ADMIN, TEAM_A, "V1-LIFECYCLE");
     const ids = created.rows[0]!.result;
     let roster = await asUser<{ person_id: string }>(
@@ -581,7 +581,14 @@ describe("Phase 1 final closure — real PostgreSQL integration", () => {
       "select person_id from public.active_employee_roster where person_id=$1",
       [ids.personId],
     );
-    expect(roster.rows).toHaveLength(0);
+    expect(roster.rows).toHaveLength(1);
+    const boundary = await db.query<{ on_end_date: string; after_end_date: string }>(
+      `select
+        public.get_effective_employment_status($1,'2026-12-31') on_end_date,
+        public.get_effective_employment_status($1,'2027-01-01') after_end_date`,
+      [ids.employmentId],
+    );
+    expect(boundary.rows[0]).toEqual({ on_end_date: "ending", after_end_date: "ended" });
     const cases = await asUser<{ case_type: string }>(
       ADMIN,
       "select case_type from public.cases where person_id=$1",
@@ -1487,7 +1494,7 @@ describe("Phase 4 Closure — permission-safe Operations reporting", () => {
     expect(attention.some((item) => item.reason.includes("Not Applicable"))).toBe(false);
   });
 
-  it("moves lifecycle reporting only on Confirm Joined and Confirm Left", async () => {
+  it("keeps confirmed future leavers active through Contract End Date", async () => {
     const before = await operationsReport(ADMIN);
     const created = await createOnboarding(ADMIN, TEAM_A, "P4-LIFECYCLE");
     const preboarding = await operationsReport(ADMIN);
@@ -1511,7 +1518,7 @@ describe("Phase 4 Closure — permission-safe Operations reporting", () => {
 
     await asUser(ADMIN, "select public.confirm_left($1,null)", [leaving.rows[0]!.result.caseId]);
     const left = await operationsReport(ADMIN);
-    expect(left.metrics.activePeople - before.metrics.activePeople).toBe(0);
+    expect(left.metrics.activePeople - before.metrics.activePeople).toBe(1);
     expect(left.metrics.leaving - joined.metrics.leaving).toBe(0);
     expect(left.metrics.leftYtd - before.metrics.leftYtd).toBe(1);
   });
@@ -1856,6 +1863,18 @@ describe("Phase 5 production security audit", () => {
       total: number;
       totalPages: number;
     };
+    const planned = (
+      await asUser<{ value: PeoplePage }>(
+        MANAGER_A,
+        "select public.list_people_page('P5-PAGE',null,1,50) value",
+      )
+    ).rows[0]!.value;
+    expect(planned).toMatchObject({ total: 0, items: [] });
+    await Promise.all(
+      [...inScope, outOfScope].map((result) =>
+        asUser(ADMIN, "select public.confirm_joined($1,null)", [result.rows[0]!.result.caseId]),
+      ),
+    );
     const page1 = (
       await asUser<{ value: PeoplePage }>(
         MANAGER_A,

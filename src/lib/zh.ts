@@ -192,3 +192,9 @@ Object.assign(zh, {
   "All execution items are managed here and grouped by responsible team.":"所有办理事项统一在这里管理，并按负责团队分组。",
   "Offboarding workflow":"离职工作流"
 });
+
+Object.assign(zh, {
+  "People currently working, including leavers through their Contract End Date":"当前在职人员；待离职人员保留至合同结束日期当天。",
+  "active":"在职",
+  "ending":"即将离职"
+});
